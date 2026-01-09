@@ -1,0 +1,28 @@
+#!/usr/bin/env nu
+# =============================================================================
+# Linear Issue CLI
+# =============================================================================
+#
+# A command-line interface for Linear issue management.
+#
+# SETUP
+#   export LINEAR_API_KEY="lin_api_..."
+#   Get your key at: https://linear.app/settings/api
+#
+# USAGE
+#   issue <command> [args]
+#
+# =============================================================================
+
+use lib/api.nu
+use lib/resolvers.nu
+use commands/issue.nu *
+use commands/epic.nu *
+use commands/label.nu *
+use commands/doc.nu *
+use commands/cycle.nu *
+
+# Default: show brief help
+def main [] {
+  print "Linear Issue CLI - run with --help or <command> --help for usage"
+}
