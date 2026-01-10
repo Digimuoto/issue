@@ -17,7 +17,7 @@
           src = ./.;
           installPhase = ''
             mkdir -p $out
-            cp -r issue.nu lib commands $out/
+            cp -r issue lib commands $out/
           '';
         };
 
@@ -50,7 +50,7 @@
 
           shellHook = ''
             echo "Linear Issue CLI development environment"
-            echo "Run: nu issue.nu <command>"
+            echo "Run: nu issue <command>"
           '';
         };
       }
