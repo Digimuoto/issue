@@ -9,7 +9,8 @@ export def "main project" [] {
 
 # List projects
 export def "main project list" [
-  --all (-a)  # Include completed/canceled projects
+  --all (-a)   # Include completed/canceled projects
+  --json (-j)  # Output as JSON
 ] {
   let filter = if $all { {} } else { { state: { in: ["planned", "started", "paused"] } } }
 
@@ -26,20 +27,33 @@ export def "main project list" [
     }
   '# { filter: $filter })
 
-  $data.projects.nodes | each { |p| {
-    Name: ($p.name | truncate 35)
-    State: $p.state
-    Progress: ($p.progress * 100 | math round | into string | $"($in)%")
-    Lead: ($p.lead?.name? | default "-")
-    Teams: ($p.teams.nodes | get name | str join ", ")
-    Start: ($p.startDate | default "-")
-    Target: ($p.targetDate | default "-")
+  let result = $data.projects.nodes | each { |p| {
+    name: $p.name
+    state: $p.state
+    progress: ($p.progress * 100 | math round)
+    lead: ($p.lead?.name? | default null)
+    teams: ($p.teams.nodes | get name)
+    startDate: ($p.startDate | default null)
+    targetDate: ($p.targetDate | default null)
   }}
+
+  if $json { $result | to json } else {
+    $result | each { |p| {
+      Name: ($p.name | truncate 35)
+      State: $p.state
+      Progress: $"($p.progress)%"
+      Lead: ($p.lead | default "-")
+      Teams: ($p.teams | str join ", ")
+      Start: ($p.startDate | default "-")
+      Target: ($p.targetDate | default "-")
+    }}
+  }
 }
 
 # Show project details
 export def "main project show" [
   name: string  # Project name
+  --json (-j)   # Output as JSON
 ] {
   # First fetch project list to find the matching one
   let list_data = (linear-query r#'
@@ -69,6 +83,21 @@ export def "main project show" [
 
   let project = $data.project
   if $project == null { exit-error $"Project '($name)' not found" }
+
+  if $json {
+    return ({
+      name: $project.name
+      state: $project.state
+      description: ($project.description | default null)
+      progress: ($project.progress * 100 | math round)
+      startDate: ($project.startDate | default null)
+      targetDate: ($project.targetDate | default null)
+      lead: ($project.lead?.name? | default null)
+      teams: ($project.teams.nodes | get name)
+      members: ($project.members.nodes | get name)
+      issues: ($project.issues.nodes | each { |i| { id: $i.identifier, title: $i.title, status: $i.state.name } })
+    } | to json)
+  }
 
   print $"(ansi green_bold)($project.name)(ansi reset)"
   print $"(ansi cyan)State:(ansi reset) ($project.state)"

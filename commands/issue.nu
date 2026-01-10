@@ -14,6 +14,7 @@ export def "main list" [
   --blocked (-b)           # Only show issues that are blocked
   --blocking (-B)          # Only show issues that block others
   --limit (-n): int = 50   # Max issues to fetch
+  --json (-j)              # Output as JSON
 ] {
   let filter = ({}
     | merge (if $status != null { { state: { name: { eq: (map-status $status) } } } } else { {} })
@@ -91,21 +92,36 @@ export def "main list" [
         $dominated and $doms
       }
 
-  $issues | each { |i| {
-    ID: $i.identifier
-    Status: $i.state.name
-    Priority: $i.priority
-    Title: ($i.title | truncate 45)
-    Labels: ($i.labels.nodes | get name | str join ", ")
-    Assignee: ($i.assignee?.name? | default "-")
-    Epic: ($i.parent?.identifier? | default "-")
+  let result = $issues | each { |i| {
+    id: $i.identifier
+    status: $i.state.name
+    priority: $i.priority
+    title: $i.title
+    labels: ($i.labels.nodes | get name)
+    assignee: ($i.assignee?.name? | default null)
+    epic: ($i.parent?.identifier? | default null)
   }}
+
+  if $json {
+    $result | to json
+  } else {
+    $result | each { |i| {
+      ID: $i.id
+      Status: $i.status
+      Priority: $i.priority
+      Title: ($i.title | truncate 45)
+      Labels: ($i.labels | str join ", ")
+      Assignee: ($i.assignee | default "-")
+      Epic: ($i.epic | default "-")
+    }}
+  }
 }
 
 # Show issue details
 export def "main show" [
   id: string              # Issue ID (e.g., DIG-44)
   --relations (-r)        # Include blocking/blocked-by relations
+  --json (-j)             # Output as JSON
 ] {
   let query = if $relations {
     r#'
@@ -149,6 +165,23 @@ export def "main show" [
 
   let i = $data.issue
   if $i == null { exit-error $"Issue '($id)' not found" }
+
+  if $json {
+    return ({
+      id: $i.identifier
+      title: $i.title
+      description: $i.description
+      url: $i.url
+      status: $i.state.name
+      priority: $i.priority
+      labels: ($i.labels.nodes | get name)
+      assignee: ($i.assignee?.name? | default null)
+      epic: (if $i.parent != null { { id: $i.parent.identifier, title: $i.parent.title } } else { null })
+      project: ($i.project?.name? | default null)
+      children: ($i.children.nodes | each { |c| { id: $c.identifier, title: $c.title, status: $c.state.name } })
+      relations: (if $relations { $i.relations?.nodes? | default [] | each { |r| { type: $r.type, issue: { id: $r.relatedIssue.identifier, title: $r.relatedIssue.title, status: $r.relatedIssue.state.name } } } } else { null })
+    } | to json)
+  }
 
   print $"(ansi green_bold)($i.identifier)(ansi reset) - ($i.title)"
   print $"(ansi cyan)Status:(ansi reset) ($i.state.name)"

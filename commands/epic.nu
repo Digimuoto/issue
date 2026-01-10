@@ -8,7 +8,9 @@ export def "main epic" [] {
 }
 
 # List epics (issues with 'epic' label)
-export def "main epic list" [] {
+export def "main epic list" [
+  --json (-j)  # Output as JSON
+] {
   let data = (linear-query r#'
     query {
       issues(filter: { labels: { name: { eq: "epic" } } }, first: 50) {
@@ -17,10 +19,14 @@ export def "main epic list" [] {
     }
   '#)
 
-  $data.issues.nodes | each { |e| {
-    ID: $e.identifier
-    Status: $e.state.name
-    Title: $e.title
-    Children: ($e.children.nodes | length)
+  let result = $data.issues.nodes | each { |e| {
+    id: $e.identifier
+    title: $e.title
+    status: $e.state.name
+    childCount: ($e.children.nodes | length)
   }}
+
+  if $json { $result | to json } else {
+    $result | each { |e| { ID: $e.id, Status: $e.status, Title: $e.title, Children: $e.childCount } }
+  }
 }

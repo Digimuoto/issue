@@ -5,8 +5,9 @@ use ../lib/resolvers.nu [get-team]
 
 # Show current sprint
 export def "main cycle" [
-  --all (-a)      # Show all cycles
+  --all (-a)           # Show all cycles
   --team (-T): string  # Team name (required if multiple teams)
+  --json (-j)          # Output as JSON
 ] {
   let team_rec = (get-team $team)
 
@@ -23,28 +24,53 @@ export def "main cycle" [
 
   if $all {
     let active_id = ($data.team.activeCycle?.id? | default "")
-    return ($data.team.cycles.nodes | each { |c| {
+    let result = $data.team.cycles.nodes | each { |c| {
+      number: $c.number
+      active: ($c.id == $active_id)
+      name: ($c.name | default null)
+      startsAt: $c.startsAt
+      endsAt: $c.endsAt
+      progress: ($c.progress * 100 | math round)
+      issueCount: ($c.issues.nodes | length)
+    }}
+    if $json { return ($result | to json) }
+    return ($result | each { |c| {
       Cycle: $c.number
-      Active: ($c.id == $active_id)
+      Active: $c.active
       Name: ($c.name | default "-")
       Start: ($c.startsAt | into datetime | format date '%Y-%m-%d')
       End: ($c.endsAt | into datetime | format date '%Y-%m-%d')
-      Progress: ($c.progress * 100 | math round)
-      Issues: ($c.issues.nodes | length)
+      Progress: $c.progress
+      Issues: $c.issueCount
     }})
   }
 
   let active = $data.team.activeCycle
-  if $active == null { print "No active cycle"; return }
-
-  print $"(ansi green_bold)Cycle ($active.number)(ansi reset) - ($active.name | default 'Unnamed')"
-  print $"(ansi cyan)Period:(ansi reset) ($active.startsAt | into datetime | format date '%Y-%m-%d') → ($active.endsAt | into datetime | format date '%Y-%m-%d')"
-  print $"(ansi cyan)Progress:(ansi reset) ($active.progress * 100 | math round)%\n"
+  if $active == null {
+    if $json { print "null" } else { print "No active cycle" }
+    return
+  }
 
   let issues = $active.issues.nodes
   let done = $issues | where { |i| $i.state.type == "completed" } | length
   let wip = $issues | where { |i| $i.state.type == "started" } | length
   let todo = $issues | where { |i| $i.state.type in ["unstarted", "backlog"] } | length
+
+  if $json {
+    return ({
+      number: $active.number
+      name: ($active.name | default null)
+      startsAt: $active.startsAt
+      endsAt: $active.endsAt
+      progress: ($active.progress * 100 | math round)
+      summary: { done: $done, inProgress: $wip, todo: $todo }
+      issues: ($issues | each { |i| { id: $i.identifier, title: $i.title, status: $i.state.name } })
+    } | to json)
+  }
+
+  print $"(ansi green_bold)Cycle ($active.number)(ansi reset) - ($active.name | default 'Unnamed')"
+  print $"(ansi cyan)Period:(ansi reset) ($active.startsAt | into datetime | format date '%Y-%m-%d') → ($active.endsAt | into datetime | format date '%Y-%m-%d')"
+  print $"(ansi cyan)Progress:(ansi reset) ($active.progress * 100 | math round)%\n"
 
   print $"(ansi cyan)Issues:(ansi reset) ($done) done, ($wip) in progress, ($todo) todo\n"
 
@@ -55,9 +81,10 @@ export def "main cycle" [
 
 # List all cycles
 export def "main cycle list" [
-  --team (-T): string  # Team name (required if multiple teams)
-  --past (-p)          # Include past cycles
+  --team (-T): string     # Team name (required if multiple teams)
+  --past (-p)             # Include past cycles
   --limit (-n): int = 20  # Max cycles to fetch
+  --json (-j)             # Output as JSON
 ] {
   let team_rec = (get-team $team)
 
@@ -75,7 +102,7 @@ export def "main cycle list" [
   let active_id = ($data.team.activeCycle?.id? | default "")
   let now = (date now)
 
-  $data.team.cycles.nodes
+  let result = $data.team.cycles.nodes
   | where { |c|
       if $past { true } else {
         let end = ($c.endsAt | into datetime)
@@ -83,19 +110,31 @@ export def "main cycle list" [
       }
     }
   | each { |c| {
-    Cycle: $c.number
-    Active: (if $c.id == $active_id { "●" } else { "" })
-    Name: ($c.name | default "-")
-    Start: ($c.startsAt | into datetime | format date '%Y-%m-%d')
-    End: ($c.endsAt | into datetime | format date '%Y-%m-%d')
-    Progress: ($"($c.progress * 100 | math round)%")
+    number: $c.number
+    active: ($c.id == $active_id)
+    name: ($c.name | default null)
+    startsAt: $c.startsAt
+    endsAt: $c.endsAt
+    progress: ($c.progress * 100 | math round)
   }}
+
+  if $json { $result | to json } else {
+    $result | each { |c| {
+      Cycle: $c.number
+      Active: (if $c.active { "●" } else { "" })
+      Name: ($c.name | default "-")
+      Start: ($c.startsAt | into datetime | format date '%Y-%m-%d')
+      End: ($c.endsAt | into datetime | format date '%Y-%m-%d')
+      Progress: $"($c.progress)%"
+    }}
+  }
 }
 
 # Show cycle details
 export def "main cycle show" [
   number: int            # Cycle number
   --team (-T): string    # Team name (required if multiple teams)
+  --json (-j)            # Output as JSON
 ] {
   let team_rec = (get-team $team)
 
@@ -115,16 +154,29 @@ export def "main cycle show" [
   let cycle = $data.team.cycles.nodes | where { |c| $c.number == $number } | first
   if $cycle == null { exit-error $"Cycle ($number) not found" }
 
-  print $"(ansi green_bold)Cycle ($cycle.number)(ansi reset) - ($cycle.name | default 'Unnamed')"
-  print $"(ansi cyan)Period:(ansi reset) ($cycle.startsAt | into datetime | format date '%Y-%m-%d') → ($cycle.endsAt | into datetime | format date '%Y-%m-%d')"
-  print $"(ansi cyan)Progress:(ansi reset) ($cycle.progress * 100 | math round)%"
-  if $cycle.description != null and $cycle.description != "" { print $"\n(ansi cyan)Description:(ansi reset)\n($cycle.description)" }
-
   let issues = $cycle.issues.nodes
   let done = $issues | where { |i| $i.state.type == "completed" } | length
   let wip = $issues | where { |i| $i.state.type == "started" } | length
   let todo = $issues | where { |i| $i.state.type in ["unstarted", "backlog"] } | length
   let canceled = $issues | where { |i| $i.state.type == "canceled" } | length
+
+  if $json {
+    return ({
+      number: $cycle.number
+      name: ($cycle.name | default null)
+      description: ($cycle.description | default null)
+      startsAt: $cycle.startsAt
+      endsAt: $cycle.endsAt
+      progress: ($cycle.progress * 100 | math round)
+      summary: { done: $done, inProgress: $wip, todo: $todo, canceled: $canceled }
+      issues: ($issues | each { |i| { id: $i.identifier, title: $i.title, status: $i.state.name, priority: $i.priority, assignee: ($i.assignee?.name? | default null) } })
+    } | to json)
+  }
+
+  print $"(ansi green_bold)Cycle ($cycle.number)(ansi reset) - ($cycle.name | default 'Unnamed')"
+  print $"(ansi cyan)Period:(ansi reset) ($cycle.startsAt | into datetime | format date '%Y-%m-%d') → ($cycle.endsAt | into datetime | format date '%Y-%m-%d')"
+  print $"(ansi cyan)Progress:(ansi reset) ($cycle.progress * 100 | math round)%"
+  if $cycle.description != null and $cycle.description != "" { print $"\n(ansi cyan)Description:(ansi reset)\n($cycle.description)" }
 
   print $"\n(ansi cyan)Summary:(ansi reset) ($done) done, ($wip) in progress, ($todo) todo, ($canceled) canceled"
 

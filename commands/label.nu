@@ -10,16 +10,23 @@ export def "main label" [] {
 # List labels
 export def "main label list" [
   --groups (-g)  # Show only label groups
+  --json (-j)    # Output as JSON
 ] {
   let data = (linear-query r#'{ issueLabels(first: 250) { nodes { id name color description isGroup parent { name } } } }'#)
   let labels = $data.issueLabels.nodes
 
   if $groups {
-    $labels | where isGroup == true | sort-by name
-    | each { |l| { Name: $l.name, Color: $l.color, Description: ($l.description | default "-") } }
+    let result = $labels | where isGroup == true | sort-by name
+      | each { |l| { name: $l.name, color: $l.color, description: ($l.description | default null) } }
+    if $json { $result | to json } else {
+      $result | each { |l| { Name: $l.name, Color: $l.color, Description: ($l.description | default "-") } }
+    }
   } else {
-    $labels | where isGroup != true | sort-by { |l| $l.parent?.name? | default "zzz" }
-    | each { |l| { Name: $l.name, Group: ($l.parent?.name? | default "-"), Color: $l.color } }
+    let result = $labels | where isGroup != true | sort-by { |l| $l.parent?.name? | default "zzz" }
+      | each { |l| { name: $l.name, group: ($l.parent?.name? | default null), color: $l.color } }
+    if $json { $result | to json } else {
+      $result | each { |l| { Name: $l.name, Group: ($l.group | default "-"), Color: $l.color } }
+    }
   }
 }
 

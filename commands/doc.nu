@@ -12,6 +12,7 @@ export def "main doc" [] {
 export def "main doc list" [
   --project (-p): string   # Filter by project
   --limit (-n): int = 20
+  --json (-j)              # Output as JSON
 ] {
   let data = (linear-query r#'
     query($first: Int!) {
@@ -21,18 +22,30 @@ export def "main doc list" [
     }
   '# { first: $limit })
 
-  $data.documents.nodes
+  let result = $data.documents.nodes
   | where { |d| $project == null or $d.project?.name? == $project }
   | each { |d| {
-    ID: $d.slugId
-    Title: ($d.title | truncate 40)
-    Project: ($d.project?.name? | default "-")
-    Updated: ($d.updatedAt | into datetime | format date "%Y-%m-%d")
+    id: $d.slugId
+    title: $d.title
+    project: ($d.project?.name? | default null)
+    updatedAt: $d.updatedAt
   }}
+
+  if $json { $result | to json } else {
+    $result | each { |d| {
+      ID: $d.id
+      Title: ($d.title | truncate 40)
+      Project: ($d.project | default "-")
+      Updated: ($d.updatedAt | into datetime | format date "%Y-%m-%d")
+    }}
+  }
 }
 
 # Show document
-export def "main doc show" [id: string] {
+export def "main doc show" [
+  id: string
+  --json (-j)  # Output as JSON
+] {
   let data = (linear-query r#'
     query($id: String!) {
       document(id: $id) { title content url project { name } creator { name } updatedAt }
@@ -41,6 +54,18 @@ export def "main doc show" [id: string] {
 
   let d = $data.document
   if $d == null { exit-error $"Document '($id)' not found" }
+
+  if $json {
+    return ({
+      id: $id
+      title: $d.title
+      content: $d.content
+      url: $d.url
+      project: ($d.project?.name? | default null)
+      creator: ($d.creator?.name? | default null)
+      updatedAt: $d.updatedAt
+    } | to json)
+  }
 
   print $"(ansi green_bold)($d.title)(ansi reset)"
   print $"(ansi cyan)URL:(ansi reset) ($d.url)"
