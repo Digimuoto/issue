@@ -3,6 +3,11 @@
 use ../lib/api.nu [exit-error, linear-query, truncate]
 use ../lib/resolvers.nu [get-doc-uuid]
 
+# Document management
+export def "main doc" [] {
+  print "Document commands - use 'issue doc --help' for usage"
+}
+
 # List documents
 export def "main doc list" [
   --project (-p): string   # Filter by project

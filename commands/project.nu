@@ -1,0 +1,90 @@
+# Project commands
+
+use ../lib/api.nu [exit-error, linear-query, truncate]
+
+# Project management
+export def "main project" [] {
+  print "Project commands - use 'issue project --help' for usage"
+}
+
+# List projects
+export def "main project list" [
+  --all (-a)  # Include completed/canceled projects
+] {
+  let filter = if $all { {} } else { { state: { in: ["planned", "started", "paused"] } } }
+
+  let data = (linear-query r#'
+    query($filter: ProjectFilter) {
+      projects(filter: $filter, first: 50) {
+        nodes {
+          id name state progress
+          startDate targetDate
+          lead { name }
+          teams { nodes { name } }
+        }
+      }
+    }
+  '# { filter: $filter })
+
+  $data.projects.nodes | each { |p| {
+    Name: ($p.name | truncate 35)
+    State: $p.state
+    Progress: ($p.progress * 100 | math round | into string | $"($in)%")
+    Lead: ($p.lead?.name? | default "-")
+    Teams: ($p.teams.nodes | get name | str join ", ")
+    Start: ($p.startDate | default "-")
+    Target: ($p.targetDate | default "-")
+  }}
+}
+
+# Show project details
+export def "main project show" [
+  name: string  # Project name
+] {
+  # First fetch project list to find the matching one
+  let list_data = (linear-query r#'
+    query {
+      projects(first: 100) {
+        nodes { id name }
+      }
+    }
+  '#)
+
+  let project_match = $list_data.projects.nodes | where { |p| ($p.name | str contains -i $name) } | first
+  if $project_match == null { exit-error $"Project '($name)' not found" }
+
+  # Now fetch full details for this specific project
+  let data = (linear-query r#'
+    query($id: String!) {
+      project(id: $id) {
+        id name state description progress
+        startDate targetDate
+        lead { name }
+        teams { nodes { name } }
+        members { nodes { name } }
+        issues(first: 30) { nodes { identifier title state { name } } }
+      }
+    }
+  '# { id: $project_match.id })
+
+  let project = $data.project
+  if $project == null { exit-error $"Project '($name)' not found" }
+
+  print $"(ansi green_bold)($project.name)(ansi reset)"
+  print $"(ansi cyan)State:(ansi reset) ($project.state)"
+  print $"(ansi cyan)Progress:(ansi reset) ($project.progress * 100 | math round)%"
+  if $project.lead != null { print $"(ansi cyan)Lead:(ansi reset) ($project.lead.name)" }
+  if ($project.teams.nodes | length) > 0 { print $"(ansi cyan)Teams:(ansi reset) ($project.teams.nodes | get name | str join ', ')" }
+  if $project.startDate != null { print $"(ansi cyan)Start:(ansi reset) ($project.startDate)" }
+  if $project.targetDate != null { print $"(ansi cyan)Target:(ansi reset) ($project.targetDate)" }
+  if $project.description != null and $project.description != "" { print $"\n(ansi cyan)Description:(ansi reset)\n($project.description)" }
+
+  if ($project.members.nodes | length) > 0 {
+    print $"\n(ansi cyan)Members:(ansi reset) ($project.members.nodes | get name | str join ', ')"
+  }
+
+  if ($project.issues.nodes | length) > 0 {
+    print $"\n(ansi cyan)Issues:(ansi reset)"
+    $project.issues.nodes | each { |i| { ID: $i.identifier, Status: $i.state.name, Title: ($i.title | truncate 50) } } | print
+  }
+}

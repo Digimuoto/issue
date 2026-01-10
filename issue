@@ -23,6 +23,10 @@ use commands/label.nu *
 use commands/doc.nu *
 use commands/cycle.nu *
 use commands/workflow.nu *
+use commands/team.nu *
+use commands/user.nu *
+use commands/search.nu *
+use commands/project.nu *
 
 # Default: show brief help
 def main [] {

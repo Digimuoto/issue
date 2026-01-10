@@ -2,6 +2,11 @@
 
 use ../lib/api.nu [linear-query]
 
+# Epic management
+export def "main epic" [] {
+  print "Epic commands - use 'issue epic --help' for usage"
+}
+
 # List epics (issues with 'epic' label)
 export def "main epic list" [] {
   let data = (linear-query r#'

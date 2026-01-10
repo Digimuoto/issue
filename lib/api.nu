@@ -26,7 +26,17 @@ export def linear-query [query: string, variables: record = {}] {
     }
   }
   if ($resp | get -o errors | default null) != null {
-    exit-error $"Linear API: ($resp.errors.0.message? | default ($resp.errors | to json))"
+    let msg = $resp.errors.0.message? | default ($resp.errors | to json)
+    # Improve common error messages
+    let friendly_msg = if ($msg | str starts-with "Entity not found") {
+      # "Entity not found: Issue" -> "Issue not found"
+      $msg | str replace "Entity not found: " "" | $"($in) not found"
+    } else if ($msg | str contains "not found") {
+      $msg
+    } else {
+      $"Linear API: ($msg)"
+    }
+    exit-error $friendly_msg
   }
   $resp.data
 }

@@ -23,7 +23,7 @@
 
         # Create wrapper script
         issue = pkgs.writeShellScriptBin "issue" ''
-          exec ${pkgs.nushell}/bin/nu ${issueSrc}/issue.nu "$@"
+          exec ${pkgs.nushell}/bin/nu ${issueSrc}/issue "$@"
         '';
       in
       {
