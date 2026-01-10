@@ -16,7 +16,7 @@ export def get-api-key [] {
 export def linear-query [query: string, variables: record = {}] {
   let api_key = (get-api-key)
   let resp = try {
-    http post https://api.linear.app/graphql --content-type application/json --headers [Authorization $api_key] { query: $query, variables: $variables }
+    http post https://api.linear.app/graphql --content-type application/json --headers [Authorization $api_key] --allow-errors { query: $query, variables: $variables }
   } catch { |e|
     let msg = $e.msg? | default "unknown error"
     if ($msg | str contains "Network failure") {

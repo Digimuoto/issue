@@ -18,7 +18,7 @@ export def "main list" [
   let filter = ({}
     | merge (if $status != null { { state: { name: { eq: (map-status $status) } } } } else { {} })
     | merge (if $label != null { { labels: { name: { eq: $label } } } } else { {} })
-    | merge (if $epic != null { { parent: { identifier: { eq: $epic } } } } else { {} })
+    | merge (if $epic != null { { parent: { id: { eq: (get-issue-uuid $epic) } } } } else { {} })
     | merge (if $project != null { { project: { name: { eq: $project } } } } else { {} })
     | merge (if $assignee != null {
         let user = (resolve-user $assignee)
