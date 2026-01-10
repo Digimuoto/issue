@@ -18,7 +18,12 @@ export def linear-query [query: string, variables: record = {}] {
   let resp = try {
     http post https://api.linear.app/graphql --content-type application/json --headers [Authorization $api_key] { query: $query, variables: $variables }
   } catch { |e|
-    exit-error $"HTTP request failed: ($e.msg? | default 'unknown error')"
+    let msg = $e.msg? | default "unknown error"
+    if ($msg | str contains "Network failure") {
+      exit-error "HTTP request failed: Check LINEAR_API_KEY is valid and network is available"
+    } else {
+      exit-error $"HTTP request failed: ($msg)"
+    }
   }
   if ($resp | get -o errors | default null) != null {
     exit-error $"Linear API: ($resp.errors.0.message? | default ($resp.errors | to json))"
