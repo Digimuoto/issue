@@ -2,7 +2,7 @@
 
 use ../lib/api.nu [exit-error, linear-query, map-status]
 use ../lib/resolvers.nu [get-issue-uuid, get-viewer]
-use ../lib/state.nu [get-current, set-current, clear-current, slugify]
+use ../lib/state.nu [get-current, get-current-issues, add-current, remove-current, clear-current, slugify]
 
 # Start working on an issue
 export def "main start" [
@@ -55,8 +55,8 @@ export def "main start" [
     }
   }
 
-  # Save state
-  set-current $issue.identifier
+  # Add to current issues list
+  add-current $issue.identifier
 
   # Print confirmation
   let updated = $update.issueUpdate.issue
@@ -68,57 +68,96 @@ export def "main start" [
 
 # Show current issue context
 export def "main current" [
-  --pr (-p)  # Only show linked PR status
+  id?: string     # Specific issue ID to show (optional)
+  --pr (-p)       # Only show linked PR status
+  --json (-j)     # Output as JSON
 ] {
-  let id = (get-current)
-  if $id == null { exit-error "No current issue. Use 'issue start <id>' to begin." }
+  let all_ids = (get-current-issues)
+  if ($all_ids | length) == 0 {
+    exit-error "No current issues. Use 'issue start <id>' to begin."
+  }
 
-  let data = (linear-query r#'
-    query($id: String!) {
-      issue(id: $id) {
-        identifier title url
-        state { name }
-        assignee { name }
-        attachments(first: 20) {
-          nodes {
-            title subtitle url sourceType
+  # If specific ID given, validate it's in list
+  let target_ids = if $id != null {
+    if not ($id in $all_ids) {
+      exit-error $"Issue '($id)' is not in current list. Current: ($all_ids | str join ', ')"
+    }
+    [$id]
+  } else {
+    $all_ids
+  }
+
+  # Query each issue individually (Linear API doesn't support identifier filter)
+  let issues = $target_ids | each { |id|
+    let data = (linear-query r#'
+      query($id: String!) {
+        issue(id: $id) {
+          identifier title url
+          state { name }
+          assignee { name }
+          attachments(first: 20) {
+            nodes {
+              title subtitle url sourceType
+            }
           }
         }
       }
-    }
-  '# { id: $id })
+    '# { id: $id })
+    $data.issue
+  } | compact
 
-  let issue = $data.issue
-  if $issue == null { exit-error $"Issue '($id)' not found" }
-
-  let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
+  if $json {
+    return ($issues | each { |issue|
+      let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
+      {
+        id: $issue.identifier
+        title: $issue.title
+        url: $issue.url
+        status: $issue.state.name
+        assignee: ($issue.assignee?.name? | default null)
+        prs: ($prs | each { |p| { title: $p.title, status: ($p.subtitle | default null), url: $p.url } })
+      }
+    } | to json)
+  }
 
   if $pr {
-    # Only show PRs
-    if ($prs | length) == 0 {
+    # Only show PRs for all issues
+    for issue in $issues {
+      let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
+      if ($prs | length) > 0 {
+        print $"(ansi cyan)PRs for ($issue.identifier):(ansi reset)"
+        $prs | each { |p| {
+          Title: $p.title
+          Status: ($p.subtitle | default "-")
+          URL: $p.url
+        }} | print
+      }
+    }
+    if ($issues | all { |i| ($i.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") } | length) == 0 }) {
       print "No linked PRs"
-    } else {
-      print $"(ansi cyan)Linked PRs for ($issue.identifier):(ansi reset)"
-      $prs | each { |p| {
-        Title: $p.title
-        Status: ($p.subtitle | default "-")
-        URL: $p.url
-      }} | print
     }
   } else {
-    # Show full context
-    print $"(ansi green_bold)($issue.identifier)(ansi reset) - ($issue.title)"
-    print $"(ansi cyan)Status:(ansi reset) ($issue.state.name)"
-    print $"(ansi cyan)Assignee:(ansi reset) ($issue.assignee?.name? | default '-')"
-    print $"(ansi cyan)URL:(ansi reset) ($issue.url)"
+    # Show all current issues
+    if ($all_ids | length) > 1 {
+      print $"(ansi cyan)Current issues:(ansi reset) ($all_ids | str join ', ')\n"
+    }
 
-    if ($prs | length) > 0 {
-      print $"\n(ansi cyan)Linked PRs:(ansi reset)"
-      $prs | each { |p| {
-        Title: $p.title
-        Status: ($p.subtitle | default "-")
-        URL: $p.url
-      }} | print
+    for issue in $issues {
+      print $"(ansi green_bold)($issue.identifier)(ansi reset) - ($issue.title)"
+      print $"(ansi cyan)Status:(ansi reset) ($issue.state.name)"
+      print $"(ansi cyan)Assignee:(ansi reset) ($issue.assignee?.name? | default '-')"
+      print $"(ansi cyan)URL:(ansi reset) ($issue.url)"
+
+      let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
+      if ($prs | length) > 0 {
+        print $"(ansi cyan)PRs:(ansi reset)"
+        $prs | each { |p| {
+          Title: $p.title
+          Status: ($p.subtitle | default "-")
+          URL: $p.url
+        }} | print
+      }
+      print ""
     }
   }
 }
@@ -199,9 +238,64 @@ export def "main done" [
 
   if not $update.issueUpdate.success { exit-error "Failed to update issue" }
 
-  # Clear state if this was the current issue
-  let current = (get-current)
-  if $current == $issue.identifier { clear-current }
+  # Remove from current issues list
+  remove-current $issue.identifier
 
   print $"(ansi green_bold)Done:(ansi reset) ($issue.identifier) - ($issue.title)"
+}
+
+# Show PRs linked to current issues
+export def "main pr" [
+  --json (-j)     # Output as JSON
+] {
+  let issue_ids = (get-current-issues)
+  if ($issue_ids | length) == 0 {
+    exit-error "No current issues. Use 'issue start <id>' to begin."
+  }
+
+  # Query each issue individually (Linear API doesn't support identifier filter)
+  let issues = $issue_ids | each { |id|
+    let data = (linear-query r#'
+      query($id: String!) {
+        issue(id: $id) {
+          identifier title
+          attachments(first: 20) {
+            nodes {
+              title subtitle url sourceType
+            }
+          }
+        }
+      }
+    '# { id: $id })
+    $data.issue
+  } | compact
+
+  let results = $issues | each { |issue|
+    let prs = $issue.attachments.nodes
+      | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
+
+    $prs | each { |pr|
+      {
+        issue: $issue.identifier
+        title: $pr.title
+        status: ($pr.subtitle | default "Open")
+        url: $pr.url
+      }
+    }
+  } | flatten
+
+  if $json {
+    return ($results | to json)
+  }
+
+  if ($results | length) == 0 {
+    print "No linked PRs found"
+  } else {
+    $results | each { |r| {
+      Issue: $r.issue
+      PR: $r.title
+      Status: $r.status
+      URL: $r.url
+    }}
+  }
 }

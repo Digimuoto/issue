@@ -27,6 +27,7 @@ use commands/team.nu *
 use commands/user.nu *
 use commands/search.nu *
 use commands/project.nu *
+use commands/prompt.nu *
 
 # Default: show brief help
 def main [] {
