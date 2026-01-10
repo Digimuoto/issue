@@ -162,7 +162,10 @@ export def "main done" [
 
   # Check PRs
   let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
-  let open_prs = $prs | where { |p| ($p.subtitle | str downcase) != "merged" and ($p.subtitle | str downcase) != "closed" }
+  let open_prs = $prs | where { |p|
+    let status = ($p.subtitle | default "" | str downcase)
+    $status != "merged" and $status != "closed"
+  }
 
   let has_warnings = ($blockers | length) > 0 or ($open_prs | length) > 0
 
