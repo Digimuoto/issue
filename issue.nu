@@ -16,11 +16,13 @@
 
 use lib/api.nu
 use lib/resolvers.nu
+use lib/state.nu
 use commands/issue.nu *
 use commands/epic.nu *
 use commands/label.nu *
 use commands/doc.nu *
 use commands/cycle.nu *
+use commands/workflow.nu *
 
 # Default: show brief help
 def main [] {

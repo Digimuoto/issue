@@ -58,6 +58,13 @@ Get your key at: https://linear.app/settings/api
 ## Usage
 
 ```bash
+# Workflow: start → work → done
+issue start DIG-123           # Set status, assign self, create branch, track
+issue current                 # Show current issue + linked PRs
+issue current --pr            # Just show PR status
+issue done                    # Check blockers/PRs, mark done, clear state
+issue done --force            # Skip checks
+
 # List issues
 issue list
 issue list --status todo
@@ -111,6 +118,9 @@ issue cycle --all
 
 | Command | Description |
 |---------|-------------|
+| `start <id>` | Start issue: In Progress, assign, branch, track |
+| `current` | Show current issue + linked PRs |
+| `done [id]` | Mark done (checks blockers/PRs) |
 | `list` | List issues with filters |
 | `show <id>` | Show issue details |
 | `create <title>` | Create new issue |
