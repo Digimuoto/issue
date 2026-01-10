@@ -63,9 +63,12 @@ issue list
 issue list --status todo
 issue list --assignee me
 issue list --cycle current
+issue list --blocked        # Only blocked issues
+issue list --blocking       # Only issues that block others
 
 # Show issue details
 issue show DIG-123
+issue show DIG-123 --relations  # Include blocking/blocked-by
 
 # Create issue
 issue create "Fix bug" --type bug --label urgent

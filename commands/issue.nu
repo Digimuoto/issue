@@ -11,6 +11,8 @@ export def "main list" [
   --project (-p): string   # Filter by project name
   --assignee (-a): string  # Filter by assignee (use "me" for yourself)
   --cycle (-c): string     # Filter by cycle name or "current" for active sprint
+  --blocked (-b)           # Only show issues that are blocked
+  --blocking (-B)          # Only show issues that block others
   --limit (-n): int = 50   # Max issues to fetch
 ] {
   let filter = ({}
@@ -46,7 +48,26 @@ export def "main list" [
       } else { {} })
   )
 
-  let data = (linear-query r#'
+  # Include relations in query if filtering by blocked/blocking
+  let query = if $blocked or $blocking {
+    r#'
+    query($filter: IssueFilter, $limit: Int!) {
+      issues(filter: $filter, first: $limit, orderBy: updatedAt) {
+        nodes {
+          identifier title priority
+          state { name }
+          labels { nodes { name } }
+          assignee { name }
+          parent { identifier }
+          relations(first: 50) {
+            nodes { type }
+          }
+        }
+      }
+    }
+    '#
+  } else {
+    r#'
     query($filter: IssueFilter, $limit: Int!) {
       issues(filter: $filter, first: $limit, orderBy: updatedAt) {
         nodes {
@@ -58,9 +79,19 @@ export def "main list" [
         }
       }
     }
-  '# { filter: $filter, limit: $limit })
+    '#
+  }
 
-  $data.issues.nodes | each { |i| {
+  let data = (linear-query $query { filter: $filter, limit: $limit })
+
+  let issues = $data.issues.nodes
+    | where { |i|
+        let dominated = not $blocked or ($i.relations?.nodes? | default [] | where type == "blocked_by" | length) > 0
+        let doms = not $blocking or ($i.relations?.nodes? | default [] | where type == "blocks" | length) > 0
+        $dominated and $doms
+      }
+
+  $issues | each { |i| {
     ID: $i.identifier
     Status: $i.state.name
     Priority: $i.priority
@@ -73,9 +104,32 @@ export def "main list" [
 
 # Show issue details
 export def "main show" [
-  id: string  # Issue ID (e.g., DIG-44)
+  id: string              # Issue ID (e.g., DIG-44)
+  --relations (-r)        # Include blocking/blocked-by relations
 ] {
-  let data = (linear-query r#'
+  let query = if $relations {
+    r#'
+    query($id: String!) {
+      issue(id: $id) {
+        identifier title description url
+        state { name }
+        priority
+        labels { nodes { name } }
+        assignee { name }
+        parent { identifier title }
+        children { nodes { identifier title state { name } } }
+        project { name }
+        relations(first: 50) {
+          nodes {
+            type
+            relatedIssue { identifier title state { name } }
+          }
+        }
+      }
+    }
+    '#
+  } else {
+    r#'
     query($id: String!) {
       issue(id: $id) {
         identifier title description url
@@ -88,7 +142,10 @@ export def "main show" [
         project { name }
       }
     }
-  '# { id: $id })
+    '#
+  }
+
+  let data = (linear-query $query { id: $id })
 
   let i = $data.issue
   if $i == null { exit-error $"Issue '($id)' not found" }
@@ -103,6 +160,30 @@ export def "main show" [
   if ($i.children.nodes | length) > 0 {
     print $"\n(ansi cyan)Sub-issues:(ansi reset)"
     $i.children.nodes | each { |c| { ID: $c.identifier, Status: $c.state.name, Title: $c.title } } | print
+  }
+
+  if $relations and ($i.relations?.nodes? | default [] | length) > 0 {
+    let rels = $i.relations.nodes
+    let blocks = $rels | where type == "blocks"
+    let blocked_by = $rels | where type == "blocked_by"
+
+    if ($blocked_by | length) > 0 {
+      print $"\n(ansi red_bold)Blocked by:(ansi reset)"
+      $blocked_by | each { |r| {
+        ID: $r.relatedIssue.identifier
+        Status: $r.relatedIssue.state.name
+        Title: $r.relatedIssue.title
+      }} | print
+    }
+
+    if ($blocks | length) > 0 {
+      print $"\n(ansi yellow_bold)Blocks:(ansi reset)"
+      $blocks | each { |r| {
+        ID: $r.relatedIssue.identifier
+        Status: $r.relatedIssue.state.name
+        Title: $r.relatedIssue.title
+      }} | print
+    }
   }
 }
 
