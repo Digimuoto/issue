@@ -15,7 +15,7 @@ export def "main prompt" [
     return
   }
 
-  let icon = ""  # Nerd Font ticket icon
+  let icon = "󰓹"  # Nerd Font ticket icon
   let prs = (get-cached-prs)
 
   # Build PR string
