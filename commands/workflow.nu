@@ -60,16 +60,11 @@ export def "main start" [
     print $"(ansi green_bold)Started:(ansi reset) ($updated.identifier) - ($issue.title)"
   }
 
-  # Create git branch
-  # Format: dig-100 (single) or dig-100-101-102 (multiple)
-  let started_ids = (get-current-issues)
-  if ($started_ids | length) > 0 {
-    # Extract team prefix and numbers from identifiers
-    let first = $started_ids.0
-    let prefix = $first | split row "-" | first | str downcase
-    let numbers = $started_ids | each { |id| $id | split row "-" | last }
-
-    let branch = $"($prefix)-($numbers | str join '-')"
+  # Create git branch from first issue's title (slugified)
+  let first_id = $issue_ids.0
+  let data = (linear-query r#'query($id: String!) { issue(id: $id) { title } }'# { id: $first_id })
+  if $data.issue != null {
+    let branch = (slugify $data.issue.title)
     let branch_result = do { git checkout -b $branch } | complete
     if $branch_result.exit_code != 0 {
       let checkout_result = do { git checkout $branch } | complete
