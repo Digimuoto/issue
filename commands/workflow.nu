@@ -183,11 +183,13 @@ export def "main scope" [
 
 # Mark issue as done
 export def "main done" [
-  id?: string     # Issue ID (uses current if not specified)
+  id?: string     # Issue ID (uses first in scope if not specified)
   --force (-f)    # Skip warnings and mark done anyway
 ] {
   let issue_id = if $id != null { $id } else { get-current }
-  if $issue_id == null { exit-error "No issue specified and no current issue set." }
+  if $issue_id == null {
+    exit-error "No issue specified and none in scope" --hint "Use 'issue done DIG-123' or add issues with 'issue scope --add'"
+  }
 
   # Fetch issue with relations and attachments
   let data = (linear-query r#'
@@ -269,7 +271,7 @@ export def "main pr" [
 ] {
   let issue_ids = (get-current-issues)
   if ($issue_ids | length) == 0 {
-    exit-error "No issues in scope. Use 'issue scope --add DIG-123' or 'issue start DIG-123'"
+    exit-error "No issues in scope" --hint "Use 'issue scope --add DIG-123' or 'issue start DIG-123'"
   }
 
   # Query each issue individually (Linear API doesn't support identifier filter)

@@ -1,14 +1,16 @@
 # Linear API helpers
 
-export def exit-error [msg: string] {
-  print $"(ansi red_bold)[ERROR](ansi reset): ($msg)"
+# Print error and exit
+export def exit-error [msg: string, --hint: string] {
+  print -e $"(ansi red_bold)error:(ansi reset) ($msg)"
+  if $hint != null { print -e $"  (ansi cyan)hint:(ansi reset) ($hint)" }
   exit 1
 }
 
 export def get-api-key [] {
   let key = ($env | get -o LINEAR_API_KEY | default "")
   if $key == "" {
-    exit-error "LINEAR_API_KEY not set. Get your key from https://linear.app/settings/api"
+    exit-error "LINEAR_API_KEY not set" --hint "Get your API key from https://linear.app/settings/api"
   }
   $key
 }
