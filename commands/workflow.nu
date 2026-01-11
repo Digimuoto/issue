@@ -162,14 +162,14 @@ export def "main scope" [
     } | to json)
   }
 
-  # Collect all PRs with attachment IDs for caching
+  # Collect all PRs with GitHub URLs for caching
   let all_prs = $issues | each { |issue|
     let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
     $prs | each { |p|
       let url = $p.url
       if ($url | str contains "/pull/") {
         let num = $url | split row "/pull/" | last | split row "/" | first | into int
-        { num: $num, id: $p.id, workspace: $workspace }
+        { num: $num, url: $url }
       } else { null }
     } | compact
   } | flatten | uniq-by num

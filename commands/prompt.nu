@@ -23,7 +23,7 @@ export def "main prompt" [
     # Check format: new has 'id' field, old had 'issue', legacy was just numbers
     let first = $prs.0
     let is_record = ($first | describe | str starts-with "record")
-    let has_id = $is_record and ($first | get -o id | default null) != null
+    let has_url = $is_record and ($first | get -o url | default null) != null
 
     if $no_links or not $is_record {
       # No links or legacy format
@@ -33,11 +33,10 @@ export def "main prompt" [
         $prs | each { |n| $"#($n)" }
       }
       $" ($pr_parts | str join ' ')"
-    } else if $has_id {
-      # OSC 8 hyperlink for each PR -> Linear review page
+    } else if $has_url {
+      # OSC 8 hyperlink for each PR -> GitHub PR page
       let pr_parts = $prs | each { |p|
-        let url = $"https://linear.app/($p.workspace)/review/($p.id)"
-        $"\u{1b}]8;;($url)\u{1b}\\#($p.num)\u{1b}]8;;\u{1b}\\"
+        $"\u{1b}]8;;($p.url)\u{1b}\\#($p.num)\u{1b}]8;;\u{1b}\\"
       } | str join " "
       $" ($pr_parts)"
     } else {
