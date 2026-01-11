@@ -1,6 +1,6 @@
 # User commands
 
-use ../lib/api.nu [exit-error, linear-query]
+use ../lib/api.nu [exit-error, linear-query, display-kv, format-date]
 
 # User management
 export def "main user" [] {
@@ -26,11 +26,11 @@ export def "main me" [
   }
 
   print $"(ansi green_bold)($v.name)(ansi reset)"
-  print $"(ansi cyan)Email:(ansi reset) ($v.email)"
-  if $v.displayName != null and $v.displayName != $v.name { print $"(ansi cyan)Display:(ansi reset) ($v.displayName)" }
-  print $"(ansi cyan)Admin:(ansi reset) ($v.admin)"
-  print $"(ansi cyan)Active:(ansi reset) ($v.active)"
-  print $"(ansi cyan)Member since:(ansi reset) ($v.createdAt | into datetime | format date '%Y-%m-%d')"
+  display-kv "Email" $v.email
+  if $v.displayName != null and $v.displayName != $v.name { display-kv "Display" $v.displayName }
+  display-kv "Admin" $v.admin
+  display-kv "Active" $v.active
+  display-kv "Member since" ($v.createdAt | format-date)
 }
 
 # List users
@@ -89,14 +89,15 @@ export def "main user show" [
   }
 
   print $"(ansi green_bold)($user.name)(ansi reset)"
-  print $"(ansi cyan)Email:(ansi reset) ($user.email)"
-  if $user.displayName != null and $user.displayName != $user.name { print $"(ansi cyan)Display:(ansi reset) ($user.displayName)" }
-  print $"(ansi cyan)Admin:(ansi reset) ($user.admin)"
-  print $"(ansi cyan)Active:(ansi reset) ($user.active)"
-  print $"(ansi cyan)Member since:(ansi reset) ($user.createdAt | into datetime | format date '%Y-%m-%d')"
+  display-kv "Email" $user.email
+  if $user.displayName != null and $user.displayName != $user.name { display-kv "Display" $user.displayName }
+  display-kv "Admin" $user.admin
+  display-kv "Active" $user.active
+  display-kv "Member since" ($user.createdAt | format-date)
 
   if ($user.assignedIssues.nodes | length) > 0 {
-    print $"\n(ansi cyan)Active Issues:(ansi reset)"
+    print ""
+    display-kv "Active Issues" ""
     $user.assignedIssues.nodes | each { |i| { ID: $i.identifier, Status: $i.state.name, Title: $i.title } } | print
   }
 }

@@ -1,6 +1,6 @@
 # Issue commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, map-status, edit-in-editor, parse-markdown-doc, read-content-file]
+use ../lib/api.nu [exit-error, linear-query, truncate, map-status, edit-in-editor, parse-markdown-doc, read-content-file, display-kv, display-section, format-date]
 use ../lib/resolvers.nu [get-team, resolve-user, get-issue-uuid, resolve-labels]
 
 # List issues with filters
@@ -198,14 +198,20 @@ export def "main show" [
   }
 
   print $"(ansi green_bold)($i.identifier)(ansi reset) - ($i.title)"
-  print $"(ansi cyan)Status:(ansi reset) ($i.state.name)"
-  print $"(ansi cyan)URL:(ansi reset) ($i.url)"
-  if $i.parent != null { print $"(ansi cyan)Epic:(ansi reset) ($i.parent.identifier) - ($i.parent.title)" }
-  if $i.assignee != null { print $"(ansi cyan)Assignee:(ansi reset) ($i.assignee.name)" }
-  if ($i.labels.nodes | length) > 0 { print $"(ansi cyan)Labels:(ansi reset) ($i.labels.nodes | get name | str join ', ')" }
-  if $i.description != null and $i.description != "" { print $"\n(ansi cyan)Description:(ansi reset)\n($i.description)" }
+  display-kv "Status" $i.state.name
+  display-kv "URL" $i.url
+  if $i.parent != null { display-kv "Epic" $"($i.parent.identifier) - ($i.parent.title)" }
+  if $i.assignee != null { display-kv "Assignee" $i.assignee.name }
+  if ($i.labels.nodes | length) > 0 { display-kv "Labels" ($i.labels.nodes | get name | str join ', ') }
+  if $i.description != null and $i.description != "" { 
+    print ""
+    display-section "Description"
+    print $i.description 
+  }
+  
   if ($i.children.nodes | length) > 0 {
-    print $"\n(ansi cyan)Sub-issues:(ansi reset)"
+    print ""
+    display-section "Sub-issues"
     $i.children.nodes | each { |c| { ID: $c.identifier, Status: $c.state.name, Title: $c.title } } | print
   }
 
@@ -215,7 +221,8 @@ export def "main show" [
     let blocked_by = $rels | where type == "blocked_by"
 
     if ($blocked_by | length) > 0 {
-      print $"\n(ansi red_bold)Blocked by:(ansi reset)"
+      print ""
+      display-section "Blocked by"
       $blocked_by | each { |r| {
         ID: $r.relatedIssue.identifier
         Status: $r.relatedIssue.state.name
@@ -224,7 +231,8 @@ export def "main show" [
     }
 
     if ($blocks | length) > 0 {
-      print $"\n(ansi yellow_bold)Blocks:(ansi reset)"
+      print ""
+      display-section "Blocks"
       $blocks | each { |r| {
         ID: $r.relatedIssue.identifier
         Status: $r.relatedIssue.state.name
@@ -256,7 +264,7 @@ export def "main comments" [
   if ($comments | length) == 0 { print "No comments"; return }
 
   for c in $comments {
-    let date = ($c.createdAt | into datetime | format date "%Y-%m-%d %H:%M")
+    let date = ($c.createdAt | format-date "%Y-%m-%d %H:%M")
     print $"(ansi cyan)($c.user?.name? | default 'Unknown')(ansi reset) - ($date)\n($c.body)\n"
   }
   print $"($comments | length) comments"

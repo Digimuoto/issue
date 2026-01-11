@@ -1,6 +1,6 @@
 # Project commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate]
+use ../lib/api.nu [exit-error, linear-query, truncate, display-kv, display-section]
 use ../lib/resolvers.nu [resolve-project]
 
 # Project management
@@ -92,20 +92,26 @@ export def "main project show" [
   }
 
   print $"(ansi green_bold)($project.name)(ansi reset)"
-  print $"(ansi cyan)State:(ansi reset) ($project.state)"
-  print $"(ansi cyan)Progress:(ansi reset) ($project.progress * 100 | math round)%"
-  if $project.lead != null { print $"(ansi cyan)Lead:(ansi reset) ($project.lead.name)" }
-  if ($project.teams.nodes | length) > 0 { print $"(ansi cyan)Teams:(ansi reset) ($project.teams.nodes | get name | str join ', ')" }
-  if $project.startDate != null { print $"(ansi cyan)Start:(ansi reset) ($project.startDate)" }
-  if $project.targetDate != null { print $"(ansi cyan)Target:(ansi reset) ($project.targetDate)" }
-  if $project.description != null and $project.description != "" { print $"\n(ansi cyan)Description:(ansi reset)\n($project.description)" }
+  display-kv "State" $project.state
+  display-kv "Progress" $"($project.progress * 100 | math round)%"
+  if $project.lead != null { display-kv "Lead" $project.lead.name }
+  if ($project.teams.nodes | length) > 0 { display-kv "Teams" ($project.teams.nodes | get name | str join ', ') }
+  if $project.startDate != null { display-kv "Start" $project.startDate }
+  if $project.targetDate != null { display-kv "Target" $project.targetDate }
+  if $project.description != null and $project.description != "" { 
+    print ""
+    display-section "Description"
+    print $project.description 
+  }
 
   if ($project.members.nodes | length) > 0 {
-    print $"\n(ansi cyan)Members:(ansi reset) ($project.members.nodes | get name | str join ', ')"
+    print ""
+    display-kv "Members" ($project.members.nodes | get name | str join ', ')
   }
 
   if ($project.issues.nodes | length) > 0 {
-    print $"\n(ansi cyan)Issues:(ansi reset)"
+    print ""
+    display-section "Issues"
     $project.issues.nodes | each { |i| { ID: $i.identifier, Status: $i.state.name, Title: ($i.title | truncate 50) } } | print
   }
 }

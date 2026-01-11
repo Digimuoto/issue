@@ -1,6 +1,6 @@
 # Team commands
 
-use ../lib/api.nu [exit-error, linear-query]
+use ../lib/api.nu [exit-error, linear-query, display-kv]
 
 # Team management
 export def "main team" [] {
@@ -53,14 +53,15 @@ export def "main team show" [
   }
 
   print $"(ansi green_bold)($team.name)(ansi reset) [($team.key)]"
-  if $team.description != null { print $"(ansi cyan)Description:(ansi reset) ($team.description)" }
-  print $"(ansi cyan)Timezone:(ansi reset) ($team.timezone | default '-')"
-  print $"(ansi cyan)Cycle Duration:(ansi reset) ($team.cycleDuration | default '-') weeks"
-  print $"(ansi cyan)Cycle Start Day:(ansi reset) ($team.cycleStartDay | default '-')"
-  print $"(ansi cyan)Default Estimate:(ansi reset) ($team.defaultIssueEstimate | default '-')"
+  if $team.description != null { display-kv "Description" $team.description }
+  display-kv "Timezone" ($team.timezone | default '-')
+  display-kv "Cycle Duration" $"($team.cycleDuration | default '-') weeks"
+  display-kv "Cycle Start Day" ($team.cycleStartDay | default '-')
+  display-kv "Default Estimate" ($team.defaultIssueEstimate | default '-')
 
   if ($team.members.nodes | length) > 0 {
-    print $"\n(ansi cyan)Members:(ansi reset)"
+    print ""
+    display-kv "Members" ""
     $team.members.nodes | each { |m| { Name: $m.name, Email: $m.email } } | print
   }
 }

@@ -1,6 +1,6 @@
 # Cycle/Sprint commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate]
+use ../lib/api.nu [exit-error, linear-query, truncate, display-kv, display-section, format-date]
 use ../lib/resolvers.nu [get-team]
 
 # Show current sprint
@@ -38,8 +38,8 @@ export def "main cycle" [
       Cycle: $c.number
       Active: $c.active
       Name: ($c.name | default "-")
-      Start: ($c.startsAt | into datetime | format date '%Y-%m-%d')
-      End: ($c.endsAt | into datetime | format date '%Y-%m-%d')
+      Start: ($c.startsAt | format-date)
+      End: ($c.endsAt | format-date)
       Progress: $c.progress
       Issues: $c.issueCount
     }})
@@ -69,10 +69,12 @@ export def "main cycle" [
   }
 
   print $"(ansi green_bold)Cycle ($active.number)(ansi reset) - ($active.name | default 'Unnamed')"
-  print $"(ansi cyan)Period:(ansi reset) ($active.startsAt | into datetime | format date '%Y-%m-%d') → ($active.endsAt | into datetime | format date '%Y-%m-%d')"
-  print $"(ansi cyan)Progress:(ansi reset) ($active.progress * 100 | math round)%\n"
+  display-kv "Period" $"($active.startsAt | format-date) → ($active.endsAt | format-date)"
+  display-kv "Progress" $"($active.progress * 100 | math round)%"
+  print ""
 
-  print $"(ansi cyan)Issues:(ansi reset) ($done) done, ($wip) in progress, ($todo) todo\n"
+  display-section "Issues"
+  print $"($done) done, ($wip) in progress, ($todo) todo\n"
 
   if ($issues | length) > 0 {
     $issues | each { |i| { ID: $i.identifier, Status: $i.state.name, Title: ($i.title | truncate 50) } } | print
@@ -123,8 +125,8 @@ export def "main cycle list" [
       Cycle: $c.number
       Active: (if $c.active { "●" } else { "" })
       Name: ($c.name | default "-")
-      Start: ($c.startsAt | into datetime | format date '%Y-%m-%d')
-      End: ($c.endsAt | into datetime | format date '%Y-%m-%d')
+      Start: ($c.startsAt | format-date)
+      End: ($c.endsAt | format-date)
       Progress: $"($c.progress)%"
     }}
   }
@@ -174,14 +176,20 @@ export def "main cycle show" [
   }
 
   print $"(ansi green_bold)Cycle ($cycle.number)(ansi reset) - ($cycle.name | default 'Unnamed')"
-  print $"(ansi cyan)Period:(ansi reset) ($cycle.startsAt | into datetime | format date '%Y-%m-%d') → ($cycle.endsAt | into datetime | format date '%Y-%m-%d')"
-  print $"(ansi cyan)Progress:(ansi reset) ($cycle.progress * 100 | math round)%"
-  if $cycle.description != null and $cycle.description != "" { print $"\n(ansi cyan)Description:(ansi reset)\n($cycle.description)" }
+  display-kv "Period" $"($cycle.startsAt | format-date) → ($cycle.endsAt | format-date)"
+  display-kv "Progress" $"($cycle.progress * 100 | math round)%"
+  if $cycle.description != null and $cycle.description != "" { 
+    print ""
+    display-section "Description"
+    print $cycle.description 
+  }
 
-  print $"\n(ansi cyan)Summary:(ansi reset) ($done) done, ($wip) in progress, ($todo) todo, ($canceled) canceled"
+  print ""
+  display-kv "Summary" $"($done) done, ($wip) in progress, ($todo) todo, ($canceled) canceled"
 
   if ($issues | length) > 0 {
-    print $"\n(ansi cyan)Issues:(ansi reset)"
+    print ""
+    display-section "Issues"
     $issues | each { |i| {
       ID: $i.identifier
       Status: $i.state.name

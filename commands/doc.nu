@@ -1,6 +1,6 @@
 # Document commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, edit-in-editor, parse-markdown-doc, read-content-file]
+use ../lib/api.nu [exit-error, linear-query, truncate, edit-in-editor, parse-markdown-doc, read-content-file, display-kv, display-section, format-date]
 use ../lib/resolvers.nu [get-doc-uuid, resolve-project]
 
 # Document management
@@ -36,7 +36,7 @@ export def "main doc list" [
       ID: $d.id
       Title: ($d.title | truncate 40)
       Project: ($d.project | default "-")
-      Updated: ($d.updatedAt | into datetime | format date "%Y-%m-%d")
+      Updated: ($d.updatedAt | format-date)
     }}
   }
 }
@@ -68,9 +68,10 @@ export def "main doc show" [
   }
 
   print $"(ansi green_bold)($d.title)(ansi reset)"
-  print $"(ansi cyan)URL:(ansi reset) ($d.url)"
-  print $"(ansi cyan)Project:(ansi reset) ($d.project?.name? | default '-')"
-  print $"(ansi cyan)Updated:(ansi reset) ($d.updatedAt | into datetime | format date '%Y-%m-%d %H:%M')\n"
+  display-kv "URL" $d.url
+  display-kv "Project" ($d.project?.name? | default '-')
+  display-kv "Updated" ($d.updatedAt | format-date "%Y-%m-%d %H:%M")
+  print ""
   print $d.content
 }
 

@@ -7,6 +7,23 @@ export def exit-error [msg: string, --hint: string] {
   exit 1
 }
 
+# Standard date formatter
+export def format-date [fmt: string = "%Y-%m-%d"] {
+  let d = $in
+  if $d == null { return "-" }
+  try { $d | into datetime | format date $fmt } catch { $d }
+}
+
+# Display key-value pair
+export def display-kv [key: string, val: any] {
+  print $"(ansi cyan)($key):(ansi reset) ($val)"
+}
+
+# Display section header
+export def display-section [title: string] {
+  print $"(ansi cyan)($title):(ansi reset)"
+}
+
 export def get-api-key [] {
   let key = ($env | get -o LINEAR_API_KEY | default "")
   if $key == "" {
