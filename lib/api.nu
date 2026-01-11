@@ -44,7 +44,8 @@ export def linear-query [query: string, variables: record = {}] {
 }
 
 export def truncate [n: int] {
-  if ($in | str length) > $n { $"($in | str substring 0..$n)..." } else { $in }
+  let s = $in
+  if ($s | str length) > $n { $"($s | str substring 0..($n - 1))..." } else { $s }
 }
 
 export def map-status [s: string] {
@@ -82,7 +83,9 @@ export def edit-in-editor [content: string, suffix: string = ".md"] {
 export def read-content-file [path: string] {
   if $path == "-" {
     # Read from stdin
-    $in | collect
+    # Use external cat to avoid potential TTY panics/issues with Nushell's internal handling
+    # and to ensure we capture the process stdin, not just the function's input
+    run-external "cat" | complete | get stdout
   } else if ($path | path exists) {
     open $path --raw
   } else {

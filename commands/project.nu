@@ -1,6 +1,7 @@
 # Project commands
 
 use ../lib/api.nu [exit-error, linear-query, truncate]
+use ../lib/resolvers.nu [resolve-project]
 
 # Project management
 export def "main project" [] {
@@ -55,17 +56,8 @@ export def "main project show" [
   name: string  # Project name
   --json (-j)   # Output as JSON
 ] {
-  # First fetch project list to find the matching one
-  let list_data = (linear-query r#'
-    query {
-      projects(first: 100) {
-        nodes { id name }
-      }
-    }
-  '#)
-
-  let project_match = $list_data.projects.nodes | where { |p| ($p.name | str contains -i $name) } | first
-  if $project_match == null { exit-error $"Project '($name)' not found" }
+  # Resolve project ID
+  let proj = (resolve-project $name)
 
   # Now fetch full details for this specific project
   let data = (linear-query r#'
@@ -79,7 +71,7 @@ export def "main project show" [
         issues(first: 30) { nodes { identifier title state { name } } }
       }
     }
-  '# { id: $project_match.id })
+  '# { id: $proj.id })
 
   let project = $data.project
   if $project == null { exit-error $"Project '($name)' not found" }

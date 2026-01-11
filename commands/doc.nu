@@ -1,7 +1,7 @@
 # Document commands
 
 use ../lib/api.nu [exit-error, linear-query, truncate, edit-in-editor, parse-markdown-doc, read-content-file]
-use ../lib/resolvers.nu [get-doc-uuid]
+use ../lib/resolvers.nu [get-doc-uuid, resolve-project]
 
 # Document management
 export def "main doc" [] {
@@ -92,7 +92,8 @@ export def "main doc create" [
     $content
   }
 
-  let input = ({ title: $title, project: $project }
+  let proj = (resolve-project $project)
+  let input = ({ title: $title, projectId: $proj.id }
     | merge (if $doc_content != null { { content: $doc_content } } else { {} })
   )
 

@@ -16,38 +16,52 @@ export def "main list" [
   --limit (-n): int = 50   # Max issues to fetch
   --json (-j)              # Output as JSON
 ] {
-  let filter = ({}
-    | merge (if $status != null { { state: { name: { eq: (map-status $status) } } } } else { {} })
-    | merge (if $label != null { { labels: { name: { eq: $label } } } } else { {} })
-    | merge (if $epic != null { { parent: { id: { eq: (get-issue-uuid $epic) } } } } else { {} })
-    | merge (if $project != null { { project: { name: { eq: $project } } } } else { {} })
-    | merge (if $assignee != null {
-        let user = (resolve-user $assignee)
-        { assignee: { id: { eq: $user.id } } }
-      } else { {} })
-    | merge (if $cycle != null {
-        let cycle_id = if $cycle == "current" {
-          let team = (get-team)
-          let data = (linear-query r#'
-            query($teamId: String!) {
-              team(id: $teamId) { activeCycle { id } }
-            }
-          '# { teamId: $team.id })
-          if $data.team.activeCycle == null {
-            exit-error "No active cycle for team"
-          }
-          $data.team.activeCycle.id
-        } else {
-          let data = (linear-query r#'
-            query { cycles(first: 100) { nodes { id name } } }
-          '#)
-          let found = $data.cycles.nodes | where name == $cycle | first
-          if $found == null { exit-error $"Cycle '($cycle)' not found" }
-          $found.id
+  let filter = {}
+  
+  let filter = if $status != null {
+    $filter | merge { state: { name: { eq: (map-status $status) } } }
+  } else { $filter }
+
+  let filter = if $label != null {
+    $filter | merge { labels: { name: { eq: $label } } }
+  } else { $filter }
+
+  let filter = if $epic != null {
+    $filter | merge { parent: { id: { eq: (get-issue-uuid $epic) } } }
+  } else { $filter }
+
+  let filter = if $project != null {
+    $filter | merge { project: { name: { eq: $project } } }
+  } else { $filter }
+
+  let filter = if $assignee != null {
+    let user = (resolve-user $assignee)
+    $filter | merge { assignee: { id: { eq: $user.id } } }
+  } else { $filter }
+
+  let filter = if $cycle != null {
+    let cycle_id = if $cycle == "current" {
+      let team = (get-team)
+      let data = (linear-query r#'
+        query($teamId: String!) {
+          team(id: $teamId) { activeCycle { id } }
         }
-        { cycle: { id: { eq: $cycle_id } } }
-      } else { {} })
-  )
+      '# { teamId: $team.id })
+      
+      if $data.team.activeCycle == null {
+        exit-error "No active cycle for team"
+      }
+      $data.team.activeCycle.id
+    } else {
+      let data = (linear-query r#'
+        query { cycles(first: 100) { nodes { id name } } }
+      '#)
+      let found = $data.cycles.nodes | where name == $cycle | first
+      if $found == null { exit-error $"Cycle '($cycle)' not found" }
+      $found.id
+    }
+    $filter | merge { cycle: { id: { eq: $cycle_id } } }
+  } else { $filter }
 
   # Include relations in query if filtering by blocked/blocking
   let query = if $blocked or $blocking {

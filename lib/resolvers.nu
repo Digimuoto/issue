@@ -52,6 +52,14 @@ export def get-doc-uuid [id: string] {
   $data.document.id
 }
 
+# Resolve project by name
+export def resolve-project [name: string] {
+  let data = (linear-query r#'query($name: String!) { projects(filter: { name: { eq: $name } }) { nodes { id name } } }'# { name: $name })
+  let p = $data.projects.nodes | first
+  if $p == null { exit-error $"Project '($name)' not found" }
+  $p
+}
+
 # Resolve label names to IDs (case-insensitive)
 export def resolve-labels [names: list<string>] {
   let data = (linear-query r#'{ issueLabels(first: 250) { nodes { id name } } }'#)
