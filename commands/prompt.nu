@@ -18,10 +18,28 @@ export def "main prompt" [
   let icon = "󰓹"  # Nerd Font ticket icon
   let prs = (get-cached-prs)
 
-  # Build PR string
+  # Build PR string (PRs are records: {num, issue} or legacy: just numbers)
   let pr_str = if ($prs | length) > 0 {
-    let pr_parts = $prs | each { |n| $"#($n)" } | str join " "
-    $" ($pr_parts)"
+    # Check if new format (records) or legacy (numbers)
+    let first = $prs.0
+    let is_record = ($first | describe | str starts-with "record")
+
+    if $no_links or not $is_record {
+      # No links or legacy format
+      let pr_parts = if $is_record {
+        $prs | each { |p| $"#($p.num)" }
+      } else {
+        $prs | each { |n| $"#($n)" }
+      }
+      $" ($pr_parts | str join ' ')"
+    } else {
+      # OSC 8 hyperlink for each PR -> Linear issue page
+      let pr_parts = $prs | each { |p|
+        let url = $"https://linear.app/issue/($p.issue)"
+        $"\u{1b}]8;;($url)\u{1b}\\#($p.num)\u{1b}]8;;\u{1b}\\"
+      } | str join " "
+      $" ($pr_parts)"
+    }
   } else { "" }
 
   if $ids {

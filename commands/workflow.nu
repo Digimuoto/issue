@@ -158,19 +158,20 @@ export def "main scope" [
     } | to json)
   }
 
-  # Collect all PR numbers for caching
-  let all_pr_nums = $issues | each { |issue|
+  # Collect all PRs with issue context for caching
+  let all_prs = $issues | each { |issue|
     let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
     $prs | each { |p|
       let url = $p.url
       if ($url | str contains "/pull/") {
-        $url | split row "/pull/" | last | split row "/" | first | into int
+        let num = $url | split row "/pull/" | last | split row "/" | first | into int
+        { num: $num, issue: $issue.identifier }
       } else { null }
     } | compact
-  } | flatten | uniq
+  } | flatten | uniq-by num
 
-  # Cache PR numbers for prompt
-  set-cached-prs $all_pr_nums
+  # Cache PRs for prompt
+  set-cached-prs $all_prs
 
   # Show all scoped issues
   print $"(ansi cyan_bold)Scope:(ansi reset) ($all_ids | str join ', ')\n"
