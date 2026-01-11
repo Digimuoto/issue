@@ -78,6 +78,18 @@ export def edit-in-editor [content: string, suffix: string = ".md"] {
   }
 }
 
+# Read content from file path or stdin (if path is "-")
+export def read-content-file [path: string] {
+  if $path == "-" {
+    # Read from stdin
+    $in | collect
+  } else if ($path | path exists) {
+    open $path --raw
+  } else {
+    exit-error $"File not found: ($path)"
+  }
+}
+
 # Parse markdown content: first H1 is title, rest is body
 # Returns {title, body} or error if no H1 found
 export def parse-markdown-doc [content: string] {

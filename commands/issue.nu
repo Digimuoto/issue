@@ -1,6 +1,6 @@
 # Issue commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, map-status, edit-in-editor, parse-markdown-doc]
+use ../lib/api.nu [exit-error, linear-query, truncate, map-status, edit-in-editor, parse-markdown-doc, read-content-file]
 use ../lib/resolvers.nu [get-team, resolve-user, get-issue-uuid, resolve-labels]
 
 # List issues with filters
@@ -250,15 +250,30 @@ export def "main comments" [
 
 # Add comment to issue
 export def "main comment" [
-  id: string    # Issue ID
-  body: string  # Comment text (markdown)
+  id: string                    # Issue ID
+  body?: string                 # Comment text (markdown)
+  --body-file (-f): string      # Read comment from file (use "-" for stdin)
 ] {
+  # Validate: need exactly one of body or body-file
+  if $body != null and $body_file != null {
+    exit-error "Cannot use both body argument and --body-file"
+  }
+  if $body == null and $body_file == null {
+    exit-error "Provide comment text or use --body-file" --hint "issue comment DIG-123 'text' OR issue comment DIG-123 --body-file file.md"
+  }
+
+  let comment_body = if $body_file != null {
+    read-content-file $body_file
+  } else {
+    $body
+  }
+
   let uuid = (get-issue-uuid $id)
   let data = (linear-query r#'
     mutation($issueId: String!, $body: String!) {
       commentCreate(input: { issueId: $issueId, body: $body }) { success }
     }
-  '# { issueId: $uuid, body: $body })
+  '# { issueId: $uuid, body: $comment_body })
 
   if $data.commentCreate.success { print $"Comment added to ($id)" } else { exit-error "Failed to add comment" }
 }
@@ -292,8 +307,21 @@ export def "main create" [
   --epic (-e): string        # Parent epic ID
   --label (-l): string       # Additional label
   --description (-d): string # Issue description
+  --description-file (-D): string # Read description from file (use "-" for stdin)
   --team (-T): string        # Team name (required if multiple teams)
 ] {
+  # Validate mutual exclusivity
+  if $description != null and $description_file != null {
+    exit-error "Cannot use both --description and --description-file"
+  }
+
+  # Resolve description from file if provided
+  let desc = if $description_file != null {
+    read-content-file $description_file
+  } else {
+    $description
+  }
+
   let team_rec = (get-team $team)
   let type_map = { feature: "Feature", bug: "Bug", refactor: "refactor", docs: "docs", chore: "Chore" }
 
@@ -306,7 +334,7 @@ export def "main create" [
   let input = ({ teamId: $team_rec.id, title: $title }
     | merge (if ($labels | length) > 0 { { labelIds: (resolve-labels $labels) } } else { {} })
     | merge (if $epic != null { { parentId: (get-issue-uuid $epic) } } else { {} })
-    | merge (if $description != null { { description: $description } } else { {} })
+    | merge (if $desc != null { { description: $desc } } else { {} })
   )
 
   let data = (linear-query r#'
@@ -329,13 +357,26 @@ export def "main edit" [
   id: string                    # Issue ID
   --title (-t): string          # New title
   --description (-d): string    # New description
+  --description-file (-D): string # Read description from file (use "-" for stdin)
   --parent (-p): string         # Parent issue (epic)
   --labels (-l): string         # Labels (comma-separated)
   --assignee (-a): string       # Assignee name or "me"
   --priority: int               # Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low
 ] {
+  # Validate mutual exclusivity
+  if $description != null and $description_file != null {
+    exit-error "Cannot use both --description and --description-file"
+  }
+
+  # Resolve description from file if provided
+  let desc = if $description_file != null {
+    read-content-file $description_file
+  } else {
+    $description
+  }
+
   let uuid = (get-issue-uuid $id)
-  let has_flags = $title != null or $description != null or $parent != null or $labels != null or $assignee != null or $priority != null
+  let has_flags = $title != null or $desc != null or $parent != null or $labels != null or $assignee != null or $priority != null
 
   # If no flags, open in editor
   if not $has_flags {
@@ -381,7 +422,7 @@ export def "main edit" [
   # Flag-based update
   let input = ({}
     | merge (if $title != null { { title: $title } } else { {} })
-    | merge (if $description != null { { description: $description } } else { {} })
+    | merge (if $desc != null { { description: $desc } } else { {} })
     | merge (if $parent != null { { parentId: (get-issue-uuid $parent) } } else { {} })
     | merge (if $labels != null { { labelIds: (resolve-labels ($labels | split row "," | each { str trim })) } } else { {} })
     | merge (if $assignee != null { { assigneeId: (resolve-user $assignee).id } } else { {} })

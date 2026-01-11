@@ -1,6 +1,6 @@
 # Document commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, edit-in-editor, parse-markdown-doc]
+use ../lib/api.nu [exit-error, linear-query, truncate, edit-in-editor, parse-markdown-doc, read-content-file]
 use ../lib/resolvers.nu [get-doc-uuid]
 
 # Document management
@@ -78,12 +78,22 @@ export def "main doc show" [
 export def "main doc create" [
   title: string
   --project (-p): string   # Project name (required)
-  --content (-c): string
+  --content (-c): string   # Document content (markdown)
+  --content-file (-C): string # Read content from file (use "-" for stdin)
 ] {
   if $project == null { exit-error "Project required. Use --project <name>" }
+  if $content != null and $content_file != null {
+    exit-error "Cannot use both --content and --content-file"
+  }
+
+  let doc_content = if $content_file != null {
+    read-content-file $content_file
+  } else {
+    $content
+  }
 
   let input = ({ title: $title, project: $project }
-    | merge (if $content != null { { content: $content } } else { {} })
+    | merge (if $doc_content != null { { content: $doc_content } } else { {} })
   )
 
   let data = (linear-query r#'
@@ -102,10 +112,21 @@ export def "main doc create" [
 export def "main doc edit" [
   id: string
   --title (-t): string
-  --content (-c): string
+  --content (-c): string   # Document content (markdown)
+  --content-file (-C): string # Read content from file (use "-" for stdin)
 ] {
+  if $content != null and $content_file != null {
+    exit-error "Cannot use both --content and --content-file"
+  }
+
+  let doc_content = if $content_file != null {
+    read-content-file $content_file
+  } else {
+    $content
+  }
+
   let uuid = (get-doc-uuid $id)
-  let has_flags = $title != null or $content != null
+  let has_flags = $title != null or $doc_content != null
 
   # If no flags, open in editor
   if not $has_flags {
@@ -148,7 +169,7 @@ export def "main doc edit" [
   # Flag-based update
   let input = ({}
     | merge (if $title != null { { title: $title } } else { {} })
-    | merge (if $content != null { { content: $content } } else { {} })
+    | merge (if $doc_content != null { { content: $doc_content } } else { {} })
   )
 
   let data = (linear-query r#'
