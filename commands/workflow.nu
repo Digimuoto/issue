@@ -125,6 +125,10 @@ export def "main scope" [
     return
   }
 
+  # Get workspace URL key for constructing Linear URLs
+  let org = (linear-query r#'{ viewer { organization { urlKey } } }'#)
+  let workspace = $org.viewer.organization.urlKey
+
   # Query each issue individually
   let issues = $all_ids | each { |id|
     let data = (linear-query r#'
@@ -135,7 +139,7 @@ export def "main scope" [
           assignee { name }
           attachments(first: 20) {
             nodes {
-              title subtitle url sourceType
+              id title subtitle url sourceType
             }
           }
         }
@@ -158,14 +162,14 @@ export def "main scope" [
     } | to json)
   }
 
-  # Collect all PRs with issue context for caching
+  # Collect all PRs with attachment IDs for caching
   let all_prs = $issues | each { |issue|
     let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
     $prs | each { |p|
       let url = $p.url
       if ($url | str contains "/pull/") {
         let num = $url | split row "/pull/" | last | split row "/" | first | into int
-        { num: $num, issue: $issue.identifier }
+        { num: $num, id: $p.id, workspace: $workspace }
       } else { null }
     } | compact
   } | flatten | uniq-by num

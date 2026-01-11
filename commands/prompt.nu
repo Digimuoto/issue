@@ -18,11 +18,12 @@ export def "main prompt" [
   let icon = "󰓹"  # Nerd Font ticket icon
   let prs = (get-cached-prs)
 
-  # Build PR string (PRs are records: {num, issue} or legacy: just numbers)
+  # Build PR string (PRs are records: {num, id, workspace} or legacy formats)
   let pr_str = if ($prs | length) > 0 {
-    # Check if new format (records) or legacy (numbers)
+    # Check format: new has 'id' field, old had 'issue', legacy was just numbers
     let first = $prs.0
     let is_record = ($first | describe | str starts-with "record")
+    let has_id = $is_record and ($first | get -o id | default null) != null
 
     if $no_links or not $is_record {
       # No links or legacy format
@@ -32,8 +33,15 @@ export def "main prompt" [
         $prs | each { |n| $"#($n)" }
       }
       $" ($pr_parts | str join ' ')"
+    } else if $has_id {
+      # OSC 8 hyperlink for each PR -> Linear review page
+      let pr_parts = $prs | each { |p|
+        let url = $"https://linear.app/($p.workspace)/review/($p.id)"
+        $"\u{1b}]8;;($url)\u{1b}\\#($p.num)\u{1b}]8;;\u{1b}\\"
+      } | str join " "
+      $" ($pr_parts)"
     } else {
-      # OSC 8 hyperlink for each PR -> Linear issue page
+      # Old format with issue field -> link to issue page
       let pr_parts = $prs | each { |p|
         let url = $"https://linear.app/issue/($p.issue)"
         $"\u{1b}]8;;($url)\u{1b}\\#($p.num)\u{1b}]8;;\u{1b}\\"
