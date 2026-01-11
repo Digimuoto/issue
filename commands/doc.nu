@@ -1,6 +1,6 @@
 # Document commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate]
+use ../lib/api.nu [exit-error, linear-query, truncate, edit-in-editor, parse-markdown-doc]
 use ../lib/resolvers.nu [get-doc-uuid]
 
 # Document management
@@ -104,9 +104,48 @@ export def "main doc edit" [
   --title (-t): string
   --content (-c): string
 ] {
-  if $title == null and $content == null { exit-error "Specify --title or --content" }
-
   let uuid = (get-doc-uuid $id)
+  let has_flags = $title != null or $content != null
+
+  # If no flags, open in editor
+  if not $has_flags {
+    # Fetch current document
+    let data = (linear-query r#'
+      query($id: String!) {
+        document(id: $id) { title content }
+      }
+    '# { id: $id })
+
+    let doc = $data.document
+    if $doc == null { exit-error $"Document '($id)' not found" }
+
+    # Format as markdown
+    let md_content = $"# ($doc.title)\n\n($doc.content | default '')"
+
+    let edited = (edit-in-editor $md_content)
+    if $edited == null {
+      print "No changes made"
+      return
+    }
+
+    let parsed = (parse-markdown-doc $edited)
+
+    let input = { title: $parsed.title, content: $parsed.body }
+    let update = (linear-query r#'
+      mutation($id: String!, $input: DocumentUpdateInput!) {
+        documentUpdate(id: $id, input: $input) { success document { title } }
+      }
+    '# { id: $uuid, input: $input })
+
+    if $update.documentUpdate.success {
+      print $"Updated: ($update.documentUpdate.document.title)"
+    } else {
+      exit-error "Failed to update document"
+    }
+    return
+  }
+
+  # Flag-based update
   let input = ({}
     | merge (if $title != null { { title: $title } } else { {} })
     | merge (if $content != null { { content: $content } } else { {} })

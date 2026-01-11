@@ -52,3 +52,51 @@ export def map-status [s: string] {
   | get -o $s
   | default $s
 }
+
+# Open content in $EDITOR and return edited content
+# Returns null if user aborts (empty file or no changes)
+export def edit-in-editor [content: string, suffix: string = ".md"] {
+  let editor = ($env | get -o EDITOR | default "vi")
+  let tmp = (mktemp --suffix $suffix)
+  $content | save -f $tmp
+
+  # Get original checksum
+  let original = (open $tmp --raw | hash md5)
+
+  # Open editor
+  run-external $editor $tmp
+
+  # Check if file was modified
+  let edited = (open $tmp --raw)
+  let new_hash = ($edited | hash md5)
+  rm $tmp
+
+  if $new_hash == $original {
+    null  # No changes
+  } else {
+    $edited
+  }
+}
+
+# Parse markdown content: first H1 is title, rest is body
+# Returns {title, body} or error if no H1 found
+export def parse-markdown-doc [content: string] {
+  let lines = ($content | lines)
+
+  # Find first H1
+  let h1_idx = ($lines | enumerate | where { |l| $l.item | str starts-with "# " } | first)
+  if $h1_idx == null {
+    exit-error "Invalid format: missing title" --hint "First line must be a H1 heading: # Your Title"
+  }
+
+  let title = ($h1_idx.item | str replace -r "^# " "" | str trim)
+  if ($title | is-empty) {
+    exit-error "Invalid format: empty title" --hint "Title cannot be empty"
+  }
+
+  # Everything after H1 is the body
+  let body_lines = ($lines | skip ($h1_idx.index + 1))
+  let body = ($body_lines | str join "\n" | str trim)
+
+  { title: $title, body: $body }
+}
