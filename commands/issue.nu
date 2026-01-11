@@ -1,6 +1,6 @@
 # Issue commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, map-status]
+use ../lib/api.nu [exit-error, linear-query, truncate, map-status, edit-in-editor, parse-markdown-doc]
 use ../lib/resolvers.nu [get-team, resolve-user, get-issue-uuid, resolve-labels]
 
 # List issues with filters
@@ -335,7 +335,50 @@ export def "main edit" [
   --priority: int               # Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low
 ] {
   let uuid = (get-issue-uuid $id)
+  let has_flags = $title != null or $description != null or $parent != null or $labels != null or $assignee != null or $priority != null
 
+  # If no flags, open in editor
+  if not $has_flags {
+    # Fetch current issue content
+    let data = (linear-query r#'
+      query($id: String!) {
+        issue(id: $id) { identifier title description }
+      }
+    '# { id: $id })
+
+    let issue = $data.issue
+    if $issue == null { exit-error $"Issue '($id)' not found" }
+
+    # Format as markdown
+    let content = $"# ($issue.title)\n\n($issue.description | default '')"
+
+    let edited = (edit-in-editor $content)
+    if $edited == null {
+      print "No changes made"
+      return
+    }
+
+    let parsed = (parse-markdown-doc $edited)
+
+    let input = { title: $parsed.title, description: $parsed.body }
+    let update = (linear-query r#'
+      mutation($id: String!, $input: IssueUpdateInput!) {
+        issueUpdate(id: $id, input: $input) {
+          success
+          issue { identifier title }
+        }
+      }
+    '# { id: $uuid, input: $input })
+
+    if $update.issueUpdate.success {
+      print $"Updated ($update.issueUpdate.issue.identifier): ($update.issueUpdate.issue.title)"
+    } else {
+      exit-error "Failed to update issue"
+    }
+    return
+  }
+
+  # Flag-based update
   let input = ({}
     | merge (if $title != null { { title: $title } } else { {} })
     | merge (if $description != null { { description: $description } } else { {} })
@@ -344,11 +387,6 @@ export def "main edit" [
     | merge (if $assignee != null { { assigneeId: (resolve-user $assignee).id } } else { {} })
     | merge (if $priority != null { { priority: $priority } } else { {} })
   )
-
-  if ($input | columns | length) == 0 {
-    print "No changes specified. Use --title, --description, --parent, --labels, --assignee, or --priority"
-    return
-  }
 
   let data = (linear-query r#'
     mutation($id: String!, $input: IssueUpdateInput!) {
