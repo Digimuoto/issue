@@ -2,7 +2,7 @@
 
 use ../lib/api.nu [exit-error, linear-query, map-status]
 use ../lib/resolvers.nu [get-issue-uuid, get-viewer]
-use ../lib/state.nu [get-current, get-current-issues, add-current, remove-current, clear-current, slugify]
+use ../lib/state.nu [get-current, get-current-issues, add-current, remove-current, clear-current, set-cached-prs, slugify]
 
 # Start working on issue(s)
 export def "main start" [
@@ -159,6 +159,20 @@ export def "main scope" [
       }
     } | to json)
   }
+
+  # Collect all PR numbers for caching
+  let all_pr_nums = $issues | each { |issue|
+    let prs = $issue.attachments.nodes | where { |a| $a.sourceType? == "github" or ($a.url | str contains "github.com") }
+    $prs | each { |p|
+      let url = $p.url
+      if ($url | str contains "/pull/") {
+        $url | split row "/pull/" | last | split row "/" | first | into int
+      } else { null }
+    } | compact
+  } | flatten | uniq
+
+  # Cache PR numbers for prompt
+  set-cached-prs $all_pr_nums
 
   # Show all scoped issues
   print $"(ansi cyan_bold)Scope:(ansi reset) ($all_ids | str join ', ')\n"

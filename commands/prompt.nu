@@ -1,7 +1,7 @@
 # Prompt integration for Starship
 # Fast output for shell prompt display - no API calls
 
-use ../lib/state.nu [get-current-issues]
+use ../lib/state.nu [get-current-issues, get-cached-prs]
 
 # Generate prompt output for Starship
 export def "main prompt" [
@@ -16,29 +16,36 @@ export def "main prompt" [
   }
 
   let icon = ""  # Nerd Font ticket icon
-  let count = ($issues | length)
-  let first_id = $issues.0
+  let prs = (get-cached-prs)
+
+  # Build PR string
+  let pr_str = if ($prs | length) > 0 {
+    let pr_parts = $prs | each { |n| $"#($n)" } | str join " "
+    $" ($pr_parts)"
+  } else { "" }
 
   if $ids {
-    # Show all issue IDs
+    # Show all issue IDs + PRs
     if $no_links {
-      $"($icon) ($issues | str join ' ')"
+      $"($icon) ($issues | str join ' ')($pr_str)"
     } else {
       # OSC 8 hyperlink for each issue
       let linked = $issues | each { |id|
         let url = $"https://linear.app/issue/($id)"
         $"\u{1b}]8;;($url)\u{1b}\\($id)\u{1b}]8;;\u{1b}\\"
       } | str join " "
-      $"($icon) ($linked)"
+      $"($icon) ($linked)($pr_str)"
     }
   } else {
-    # Show icon with count
+    # Show icon with count + PRs
+    let count = ($issues | length)
     if $no_links {
-      $"($icon) ($count)"
+      $"($icon) ($count)($pr_str)"
     } else {
       # OSC 8 hyperlink to first issue
+      let first_id = $issues.0
       let url = $"https://linear.app/issue/($first_id)"
-      $"\u{1b}]8;;($url)\u{1b}\\($icon) ($count)\u{1b}]8;;\u{1b}\\"
+      $"\u{1b}]8;;($url)\u{1b}\\($icon) ($count)\u{1b}]8;;\u{1b}\\($pr_str)"
     }
   }
 }

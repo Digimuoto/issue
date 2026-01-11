@@ -65,6 +65,34 @@ export def clear-current [] {
   }
 }
 
+# Get cached PR numbers
+export def get-cached-prs [] {
+  if (".issue" | path exists) {
+    let content = (open ".issue" | str trim)
+    if ($content | str starts-with "{") {
+      try {
+        let data = ($content | from json)
+        $data.prs | default []
+      } catch {
+        []
+      }
+    } else {
+      []
+    }
+  } else {
+    []
+  }
+}
+
+# Update cached PR numbers (preserves issues list)
+export def set-cached-prs [prs: list] {
+  let issues = (get-current-issues)
+  if ($issues | length) > 0 {
+    { issues: $issues, prs: $prs, updated: (date now | format date "%Y-%m-%dT%H:%M:%SZ") }
+      | to json | save -f ".issue"
+  }
+}
+
 # Slugify a string for git branch names
 export def slugify [s: string] {
   $s
