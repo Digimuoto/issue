@@ -14,7 +14,10 @@ export def get-team [team_name?: string] {
   } else if ($teams | length) == 1 {
     $teams.0
   } else {
-    exit-error $"Multiple teams found: ($teams | get name | str join ', '). Use --team <name>"
+    # Interactive selection
+    let choice = ($teams | get name | input list "Select Team:")
+    if $choice == null { exit-error "No team selected" }
+    $teams | where name == $choice | first
   }
 }
 
@@ -38,11 +41,37 @@ export def resolve-user [name: string] {
   $user
 }
 
-# Get issue UUID from identifier (e.g., DIG-88)
-export def get-issue-uuid [id: string] {
-  let data = (linear-query r#'query($id: String!) { issue(id: $id) { id identifier } }'# { id: $id })
-  if $data.issue == null { exit-error $"Issue '($id)' not found" }
-  $data.issue.id
+# Get issue UUID from identifier (e.g., DIG-88) or title search
+export def get-issue-uuid [id_or_title: string] {
+  # 1. Try direct lookup (ID or UUID)
+  let data = (linear-query r#'query($id: String!) { issue(id: $id) { id identifier } }'# { id: $id_or_title })
+  if $data.issue != null { return $data.issue.id }
+
+  # 2. Search by title
+  let search = (linear-query r#'query($term: String!) {
+    issues(filter: { title: { contains: $term } }, first: 5) {
+      nodes { id identifier title }
+    }
+  }'# { term: $id_or_title })
+
+  let found = $search.issues.nodes
+  
+  if ($found | length) == 0 {
+    exit-error $"Issue '($id_or_title)' not found"
+  }
+  
+  if ($found | length) == 1 {
+    return $found.0.id
+  }
+  
+  # Check for exact case-insensitive title match
+  let exact = ($found | where { |i| ($i.title | str downcase) == ($id_or_title | str downcase) })
+  if ($exact | length) == 1 {
+    return $exact.0.id
+  }
+
+  let suggestions = ($found | each { |i| $"  ($i.identifier): ($i.title)" } | str join "\n")
+  exit-error $"Multiple issues found for '($id_or_title)':\n($suggestions)"
 }
 
 # Get document UUID from slug
@@ -69,7 +98,7 @@ export def resolve-labels [names: list<string>] {
   let found_names = $found | get name | each { str downcase }
   let missing = $normalized | where { |n| not ($n in $found_names) }
   if ($missing | length) > 0 {
-    exit-error $"Unknown label(s): ($missing | str join ', ')"
+    exit-error $"Unknown labels: ($missing | str join ', ')"
   }
   $found | get id
 }

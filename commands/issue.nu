@@ -100,13 +100,13 @@ export def "main list" [
   let data = (linear-query $query { filter: $filter, limit: $limit })
 
   let issues = $data.issues.nodes
-    | where { |i|
+    | where { |i| 
         let dominated = not $blocked or ($i.relations?.nodes? | default [] | where type == "blocked_by" | length) > 0
         let doms = not $blocking or ($i.relations?.nodes? | default [] | where type == "blocks" | length) > 0
         $dominated and $doms
       }
 
-  let result = $issues | each { |i| {
+  let result = $issues | each { |i| { 
     id: $i.identifier
     status: $i.state.name
     priority: $i.priority
@@ -119,7 +119,7 @@ export def "main list" [
   if $json {
     $result | to json
   } else {
-    $result | each { |i| {
+    $result | each { |i| { 
       ID: $i.id
       Status: $i.status
       Priority: $i.priority
@@ -133,10 +133,16 @@ export def "main list" [
 
 # Show issue details
 export def "main show" [
-  id: string              # Issue ID (e.g., DIG-44)
+  id?: string             # Issue ID (e.g., DIG-44)
   --relations (-r)        # Include blocking/blocked-by relations
   --json (-j)             # Output as JSON
 ] {
+  let id = if $id == null {
+    let val = (input "Issue ID/Title: ")
+    if ($val | is-empty) { exit-error "Issue ID is required" }
+    $val
+  } else { $id }
+
   let query = if $relations {
     r#'
     query($id: String!) {
@@ -175,13 +181,14 @@ export def "main show" [
     '#
   }
 
-  let data = (linear-query $query { id: $id })
+  let uuid = (get-issue-uuid $id)
+  let data = (linear-query $query { id: $uuid })
 
   let i = $data.issue
   if $i == null { exit-error $"Issue '($id)' not found" }
 
   if $json {
-    return ({
+    return ({ 
       id: $i.identifier
       title: $i.title
       description: $i.description
@@ -202,7 +209,7 @@ export def "main show" [
   display-kv "URL" $i.url
   if $i.parent != null { display-kv "Epic" $"($i.parent.identifier) - ($i.parent.title)" }
   if $i.assignee != null { display-kv "Assignee" $i.assignee.name }
-  if ($i.labels.nodes | length) > 0 { display-kv "Labels" ($i.labels.nodes | get name | str join ', ') }
+  if ($i.labels.nodes | length) > 0 { display-kv "Labels" ($i.labels.nodes | get name | str join ", ") }
   if $i.description != null and $i.description != "" { 
     print ""
     display-section "Description"
@@ -244,8 +251,15 @@ export def "main show" [
 
 # Show issue comments
 export def "main comments" [
-  id: string  # Issue ID
+  id?: string  # Issue ID
 ] {
+  let id = if $id == null {
+    let val = (input "Issue ID/Title: ")
+    if ($val | is-empty) { exit-error "Issue ID is required" }
+    $val
+  } else { $id }
+
+  let uuid = (get-issue-uuid $id)
   let data = (linear-query r#'
     query($id: String!) {
       issue(id: $id) {
@@ -253,7 +267,7 @@ export def "main comments" [
         comments { nodes { body createdAt user { name } } }
       }
     }
-  '# { id: $id })
+  '# { id: $uuid })
 
   let i = $data.issue
   if $i == null { exit-error $"Issue '($id)' not found" }
@@ -272,22 +286,29 @@ export def "main comments" [
 
 # Add comment to issue
 export def "main comment" [
-  id: string                    # Issue ID
+  id?: string                    # Issue ID
   body?: string                 # Comment text (markdown)
   --body-file (-f): string      # Read comment from file (use "-" for stdin)
 ] {
+  let id = if $id == null {
+    let val = (input "Issue ID/Title: ")
+    if ($val | is-empty) { exit-error "Issue ID is required" }
+    $val
+  } else { $id }
+
   # Validate: need exactly one of body or body-file
   if $body != null and $body_file != null {
     exit-error "Cannot use both body argument and --body-file"
   }
-  if $body == null and $body_file == null {
-    exit-error "Provide comment text or use --body-file" --hint "issue comment DIG-123 'text' OR issue comment DIG-123 --body-file file.md"
-  }
-
+  
   let comment_body = if $body_file != null {
     read-content-file $body_file
-  } else {
+  } else if $body != null {
     $body
+  } else {
+    let val = (input "Comment: ")
+    if ($val | is-empty) { exit-error "Comment body is required" }
+    $val
   }
 
   let uuid = (get-issue-uuid $id)
@@ -302,13 +323,28 @@ export def "main comment" [
 
 # Update issue status
 export def "main status" [
-  id: string      # Issue ID
-  status: string  # Status: backlog, todo, inprogress, done, canceled
+  id?: string      # Issue ID
+  status?: string  # Status: backlog, todo, inprogress, done, canceled
 ] {
+  let id = if $id == null {
+    let val = (input "Issue ID/Title: ")
+    if ($val | is-empty) { exit-error "Issue ID is required" }
+    $val
+  } else { $id }
+
   let uuid = (get-issue-uuid $id)
   let states = (linear-query r#'{ workflowStates(first: 50) { nodes { id name } } }'#)
-  let state = $states.workflowStates.nodes | where name == (map-status $status) | first
-  if $state == null { exit-error $"Unknown status '($status)'. Use: backlog, todo, inprogress, done, canceled" }
+  
+  let state_id = if $status != null {
+    let state = $states.workflowStates.nodes | where name == (map-status $status) | first
+    if $state == null { exit-error $"Unknown status '($status)'. Use: backlog, todo, inprogress, done, canceled" }
+    $state.id
+  } else {
+    let options = ($states.workflowStates.nodes | get name)
+    let choice = ($options | input list "Select Status:")
+    if $choice == null { exit-error "No status selected" }
+    ($states.workflowStates.nodes | where name == $choice | first).id
+  }
 
   let data = (linear-query r#'
     mutation($id: String!, $stateId: String!) {
@@ -317,14 +353,14 @@ export def "main status" [
         issue { identifier state { name } }
       }
     }
-  '# { id: $uuid, stateId: $state.id })
+  '# { id: $uuid, stateId: $state_id })
 
   if $data.issueUpdate.success { print $"($data.issueUpdate.issue.identifier) → ($data.issueUpdate.issue.state.name)" } else { exit-error "Failed to update status" }
 }
 
 # Create new issue
 export def "main create" [
-  title: string              # Issue title
+  title?: string             # Issue title
   --type (-t): string        # Type: feature, bug, refactor, docs, chore
   --epic (-e): string        # Parent epic ID
   --label (-l): string       # Additional label
@@ -332,23 +368,41 @@ export def "main create" [
   --description-file (-D): string # Read description from file (use "-" for stdin)
   --team (-T): string        # Team name (required if multiple teams)
 ] {
+  let interactive = ($title == null)
+
+  let title = if $interactive {
+    print "(ansi cyan)Interactive Issue Creation(ansi reset)"
+    let t = (input "Title: ")
+    if ($t | is-empty) { exit-error "Title is required" }
+    $t
+  } else { $title }
+
   # Validate mutual exclusivity
   if $description != null and $description_file != null {
     exit-error "Cannot use both --description and --description-file"
   }
 
-  # Resolve description from file if provided
+  # Resolve description from file if provided or interactive
   let desc = if $description_file != null {
     read-content-file $description_file
-  } else {
+  } else if $description != null {
     $description
+  } else if $interactive {
+    input "Description (optional): "
+  } else {
+    null
   }
 
   let team_rec = (get-team $team)
   let type_map = { feature: "Feature", bug: "Bug", refactor: "refactor", docs: "docs", chore: "Chore" }
+  
+  let type_val = if $interactive and $type == null {
+    let types = ["feature", "bug", "refactor", "docs", "chore"]
+    $types | input list "Type (optional): "
+  } else { $type }
 
   let labels = ([]
-    | append (if $type != null { $type_map | get -o $type | default $type } else { null })
+    | append (if $type_val != null { $type_map | get -o $type_val | default $type_val } else { null })
     | append (if $label != null { $label } else { null })
     | compact
   )
@@ -356,7 +410,7 @@ export def "main create" [
   let input = ({ teamId: $team_rec.id, title: $title }
     | merge (if ($labels | length) > 0 { { labelIds: (resolve-labels $labels) } } else { {} })
     | merge (if $epic != null { { parentId: (get-issue-uuid $epic) } } else { {} })
-    | merge (if $desc != null { { description: $desc } } else { {} })
+    | merge (if $desc != null and $desc != "" { { description: $desc } } else { {} })
   )
 
   let data = (linear-query r#'
@@ -376,19 +430,29 @@ export def "main create" [
 
 # Edit issue fields
 export def "main edit" [
-  id: string                    # Issue ID
+  id?: string                   # Issue ID
   --title (-t): string          # New title
   --description (-d): string    # New description
   --description-file (-D): string # Read description from file (use "-" for stdin)
-  --parent (-p): string         # Parent issue (epic)
+  --epic (-e): string           # Parent issue (epic)
+  --parent (-p): string         # Alias for --epic
   --labels (-l): string         # Labels (comma-separated)
   --assignee (-a): string       # Assignee name or "me"
   --priority: int               # Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low
 ] {
+  let id = if $id == null {
+    let val = (input "Issue ID/Title: ")
+    if ($val | is-empty) { exit-error "Issue ID is required" }
+    $val
+  } else { $id }
+
   # Validate mutual exclusivity
   if $description != null and $description_file != null {
     exit-error "Cannot use both --description and --description-file"
   }
+
+  # Handle epic/parent alias
+  let parent_val = if $epic != null { $epic } else { $parent }
 
   # Resolve description from file if provided
   let desc = if $description_file != null {
@@ -398,7 +462,7 @@ export def "main edit" [
   }
 
   let uuid = (get-issue-uuid $id)
-  let has_flags = $title != null or $desc != null or $parent != null or $labels != null or $assignee != null or $priority != null
+  let has_flags = $title != null or $desc != null or $parent_val != null or $labels != null or $assignee != null or $priority != null
 
   # If no flags, open in editor
   if not $has_flags {
@@ -442,10 +506,10 @@ export def "main edit" [
   }
 
   # Flag-based update
-  let input = ({}
+  let input = ({} 
     | merge (if $title != null { { title: $title } } else { {} })
     | merge (if $desc != null { { description: $desc } } else { {} })
-    | merge (if $parent != null { { parentId: (get-issue-uuid $parent) } } else { {} })
+    | merge (if $parent_val != null { { parentId: (get-issue-uuid $parent_val) } } else { {} })
     | merge (if $labels != null { { labelIds: (resolve-labels ($labels | split row "," | each { str trim })) } } else { {} })
     | merge (if $assignee != null { { assigneeId: (resolve-user $assignee).id } } else { {} })
     | merge (if $priority != null { { priority: $priority } } else { {} })
