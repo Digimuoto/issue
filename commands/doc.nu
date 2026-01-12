@@ -77,8 +77,8 @@ export def "main doc show" [
 
 # Create document
 export def "main doc create" [
-  title: string
   --project (-p): string   # Project name (required)
+  --title (-t): string     # Document title (or use # header in editor)
   --content (-c): string   # Document content (markdown)
   --content-file (-C): string # Read content from file (use "-" for stdin)
 ] {
@@ -87,13 +87,44 @@ export def "main doc create" [
     exit-error "Cannot use both --content and --content-file"
   }
 
+  let proj = (resolve-project $project)
+
+  # If no title/content, open editor
+  if $title == null and $content == null and $content_file == null {
+    let template = "# Document Title\n\nWrite your content here..."
+    let edited = (edit-in-editor $template)
+    if $edited == null {
+      print "Aborted: no changes made"
+      return
+    }
+
+    let parsed = (parse-markdown-doc $edited)
+    let input = { title: $parsed.title, projectId: $proj.id, content: $parsed.body }
+
+    let data = (linear-query r#'
+      mutation($input: DocumentCreateInput!) {
+        documentCreate(input: $input) { success document { slugId title url } }
+      }
+    '# { input: $input })
+
+    if $data.documentCreate.success {
+      let d = $data.documentCreate.document
+      print $"Created: ($d.title)\nURL: ($d.url)\nID: ($d.slugId)"
+    } else { exit-error "Failed to create document" }
+    return
+  }
+
+  # Flag-based creation
+  if $title == null {
+    exit-error "Title required. Use --title or omit all flags to open editor"
+  }
+
   let doc_content = if $content_file != null {
     read-content-file $content_file
   } else {
     $content
   }
 
-  let proj = (resolve-project $project)
   let input = ({ title: $title, projectId: $proj.id }
     | merge (if $doc_content != null { { content: $doc_content } } else { {} })
   )
