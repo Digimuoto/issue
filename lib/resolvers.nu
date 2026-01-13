@@ -102,3 +102,27 @@ export def resolve-labels [names: list<string>] {
   }
   $found | get id
 }
+
+# Resolve cycle by name or "current"
+export def resolve-cycle [name_or_current: string] {
+  if $name_or_current == "current" {
+      let team = (get-team)
+      let data = (linear-query r#'
+        query($teamId: String!) {
+          team(id: $teamId) { activeCycle { id } }
+        }
+      '# { teamId: $team.id })
+      
+      if $data.team.activeCycle == null {
+        exit-error "No active cycle for team"
+      }
+      $data.team.activeCycle.id
+  } else {
+      let data = (linear-query r#'
+        query { cycles(first: 100) { nodes { id name } } }
+      '#)
+      let found = $data.cycles.nodes | where name == $name_or_current | first
+      if $found == null { exit-error $"Cycle '($name_or_current)' not found" }
+      $found.id
+  }
+}

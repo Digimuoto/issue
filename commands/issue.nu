@@ -1,7 +1,8 @@
 # Issue commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, map-status, edit-in-editor, parse-markdown-doc, read-content-file, display-kv, display-section, format-date]
-use ../lib/resolvers.nu [get-team, resolve-user, get-issue-uuid, resolve-labels]
+use ../lib/api.nu [exit-error, linear-query, map-status, edit-in-editor, parse-markdown-doc, read-content-file, compact-record, format-date]
+use ../lib/resolvers.nu [get-team, resolve-user, get-issue-uuid, resolve-labels, resolve-cycle]
+use ../lib/ui.nu [prompt, select, render-issue, render-comments, truncate]
 
 # List issues with filters
 export def "main list" [
@@ -16,52 +17,14 @@ export def "main list" [
   --limit (-n): int = 50   # Max issues to fetch
   --json (-j)              # Output as JSON
 ] {
-  let filter = {}
-  
-  let filter = if $status != null {
-    $filter | merge { state: { name: { eq: (map-status $status) } } }
-  } else { $filter }
-
-  let filter = if $label != null {
-    $filter | merge { labels: { name: { eq: $label } } }
-  } else { $filter }
-
-  let filter = if $epic != null {
-    $filter | merge { parent: { id: { eq: (get-issue-uuid $epic) } } }
-  } else { $filter }
-
-  let filter = if $project != null {
-    $filter | merge { project: { name: { eq: $project } } }
-  } else { $filter }
-
-  let filter = if $assignee != null {
-    let user = (resolve-user $assignee)
-    $filter | merge { assignee: { id: { eq: $user.id } } }
-  } else { $filter }
-
-  let filter = if $cycle != null {
-    let cycle_id = if $cycle == "current" {
-      let team = (get-team)
-      let data = (linear-query r#'
-        query($teamId: String!) {
-          team(id: $teamId) { activeCycle { id } }
-        }
-      '# { teamId: $team.id })
-      
-      if $data.team.activeCycle == null {
-        exit-error "No active cycle for team"
-      }
-      $data.team.activeCycle.id
-    } else {
-      let data = (linear-query r#'
-        query { cycles(first: 100) { nodes { id name } } }
-      '#)
-      let found = $data.cycles.nodes | where name == $cycle | first
-      if $found == null { exit-error $"Cycle '($cycle)' not found" }
-      $found.id
-    }
-    $filter | merge { cycle: { id: { eq: $cycle_id } } }
-  } else { $filter }
+  let filter = {
+    state: (if $status != null { { name: { eq: (map-status $status) } } } else { null })
+    labels: (if $label != null { { name: { eq: $label } } } else { null })
+    parent: (if $epic != null { { id: { eq: (get-issue-uuid $epic) } } } else { null })
+    project: (if $project != null { { name: { eq: $project } } } else { null })
+    assignee: (if $assignee != null { { id: { eq: (resolve-user $assignee).id } } } else { null })
+    cycle: (if $cycle != null { { id: { eq: (resolve-cycle $cycle) } } } else { null })
+  } | compact-record
 
   # Include relations in query if filtering by blocked/blocking
   let query = if $blocked or $blocking {
@@ -137,11 +100,7 @@ export def "main show" [
   --relations (-r)        # Include blocking/blocked-by relations
   --json (-j)             # Output as JSON
 ] {
-  let id = if $id == null {
-    let val = (input "Issue ID/Title: ")
-    if ($val | is-empty) { exit-error "Issue ID is required" }
-    $val
-  } else { $id }
+  let id = if $id == null { prompt "Issue ID/Title: " --required } else { $id }
 
   let query = if $relations {
     r#'
@@ -204,60 +163,14 @@ export def "main show" [
     } | to json)
   }
 
-  print $"(ansi green_bold)($i.identifier)(ansi reset) - ($i.title)"
-  display-kv "Status" $i.state.name
-  display-kv "URL" $i.url
-  if $i.parent != null { display-kv "Epic" $"($i.parent.identifier) - ($i.parent.title)" }
-  if $i.assignee != null { display-kv "Assignee" $i.assignee.name }
-  if ($i.labels.nodes | length) > 0 { display-kv "Labels" ($i.labels.nodes | get name | str join ", ") }
-  if $i.description != null and $i.description != "" { 
-    print ""
-    display-section "Description"
-    print $i.description 
-  }
-  
-  if ($i.children.nodes | length) > 0 {
-    print ""
-    display-section "Sub-issues"
-    $i.children.nodes | each { |c| { ID: $c.identifier, Status: $c.state.name, Title: $c.title } } | print
-  }
-
-  if $relations and ($i.relations?.nodes? | default [] | length) > 0 {
-    let rels = $i.relations.nodes
-    let blocks = $rels | where type == "blocks"
-    let blocked_by = $rels | where type == "blocked_by"
-
-    if ($blocked_by | length) > 0 {
-      print ""
-      display-section "Blocked by"
-      $blocked_by | each { |r| {
-        ID: $r.relatedIssue.identifier
-        Status: $r.relatedIssue.state.name
-        Title: $r.relatedIssue.title
-      }} | print
-    }
-
-    if ($blocks | length) > 0 {
-      print ""
-      display-section "Blocks"
-      $blocks | each { |r| {
-        ID: $r.relatedIssue.identifier
-        Status: $r.relatedIssue.state.name
-        Title: $r.relatedIssue.title
-      }} | print
-    }
-  }
+  render-issue $i
 }
 
 # Show issue comments
 export def "main comments" [
   id?: string  # Issue ID
 ] {
-  let id = if $id == null {
-    let val = (input "Issue ID/Title: ")
-    if ($val | is-empty) { exit-error "Issue ID is required" }
-    $val
-  } else { $id }
+  let id = if $id == null { prompt "Issue ID/Title: " --required } else { $id }
 
   let uuid = (get-issue-uuid $id)
   let data = (linear-query r#'
@@ -273,28 +186,16 @@ export def "main comments" [
   if $i == null { exit-error $"Issue '($id)' not found" }
 
   print $"(ansi green_bold)($i.identifier)(ansi reset) - ($i.title)\n"
-
-  let comments = $i.comments.nodes
-  if ($comments | length) == 0 { print "No comments"; return }
-
-  for c in $comments {
-    let date = ($c.createdAt | format-date "%Y-%m-%d %H:%M")
-    print $"(ansi cyan)($c.user?.name? | default 'Unknown')(ansi reset) - ($date)\n($c.body)\n"
-  }
-  print $"($comments | length) comments"
+  render-comments $i.comments.nodes
 }
 
 # Add comment to issue
 export def "main comment" [
-  id?: string                    # Issue ID
+  id?: string                   # Issue ID
   body?: string                 # Comment text (markdown)
   --body-file (-f): string      # Read comment from file (use "-" for stdin)
 ] {
-  let id = if $id == null {
-    let val = (input "Issue ID/Title: ")
-    if ($val | is-empty) { exit-error "Issue ID is required" }
-    $val
-  } else { $id }
+  let id = if $id == null { prompt "Issue ID/Title: " --required } else { $id }
 
   # Validate: need exactly one of body or body-file
   if $body != null and $body_file != null {
@@ -306,9 +207,7 @@ export def "main comment" [
   } else if $body != null {
     $body
   } else {
-    let val = (input "Comment: ")
-    if ($val | is-empty) { exit-error "Comment body is required" }
-    $val
+    prompt "Comment: " --required
   }
 
   let uuid = (get-issue-uuid $id)
@@ -318,7 +217,7 @@ export def "main comment" [
     }
   '# { issueId: $uuid, body: $comment_body })
 
-  if $data.commentCreate.success { print $"Comment added to ($id)" } else { exit-error "Failed to add comment" }
+  if $data.commentCreate.success { print $"Comment added to ($id" } else { exit-error "Failed to add comment" }
 }
 
 # Update issue status
@@ -326,11 +225,7 @@ export def "main status" [
   id?: string      # Issue ID
   status?: string  # Status: backlog, todo, inprogress, done, canceled
 ] {
-  let id = if $id == null {
-    let val = (input "Issue ID/Title: ")
-    if ($val | is-empty) { exit-error "Issue ID is required" }
-    $val
-  } else { $id }
+  let id = if $id == null { prompt "Issue ID/Title: " --required } else { $id }
 
   let uuid = (get-issue-uuid $id)
   let states = (linear-query r#'{ workflowStates(first: 50) { nodes { id name } } }'#)
@@ -341,8 +236,7 @@ export def "main status" [
     $state.id
   } else {
     let options = ($states.workflowStates.nodes | get name)
-    let choice = ($options | input list "Select Status:")
-    if $choice == null { exit-error "No status selected" }
+    let choice = (select "Select Status:" $options)
     ($states.workflowStates.nodes | where name == $choice | first).id
   }
 
@@ -372,23 +266,19 @@ export def "main create" [
 
   let title = if $interactive {
     print "(ansi cyan)Interactive Issue Creation(ansi reset)"
-    let t = (input "Title: ")
-    if ($t | is-empty) { exit-error "Title is required" }
-    $t
+    prompt "Title: " --required
   } else { $title }
 
-  # Validate mutual exclusivity
   if $description != null and $description_file != null {
     exit-error "Cannot use both --description and --description-file"
   }
 
-  # Resolve description from file if provided or interactive
   let desc = if $description_file != null {
     read-content-file $description_file
   } else if $description != null {
     $description
   } else if $interactive {
-    input "Description (optional): "
+    prompt "Description (optional): "
   } else {
     null
   }
@@ -398,7 +288,7 @@ export def "main create" [
   
   let type_val = if $interactive and $type == null {
     let types = ["feature", "bug", "refactor", "docs", "chore"]
-    $types | input list "Type (optional): "
+    select "Type (optional): " $types
   } else { $type }
 
   let labels = ([]
@@ -407,11 +297,13 @@ export def "main create" [
     | compact
   )
 
-  let input = ({ teamId: $team_rec.id, title: $title }
-    | merge (if ($labels | length) > 0 { { labelIds: (resolve-labels $labels) } } else { {} })
-    | merge (if $epic != null { { parentId: (get-issue-uuid $epic) } } else { {} })
-    | merge (if $desc != null and $desc != "" { { description: $desc } } else { {} })
-  )
+  let input = {
+    teamId: $team_rec.id
+    title: $title
+    description: (if $desc != "" { $desc } else { null })
+    labelIds: (if ($labels | length) > 0 { (resolve-labels $labels) } else { null })
+    parentId: (if $epic != null { (get-issue-uuid $epic) } else { null })
+  } | compact-record
 
   let data = (linear-query r#'
     mutation($input: IssueCreateInput!) {
@@ -440,21 +332,14 @@ export def "main edit" [
   --assignee (-a): string       # Assignee name or "me"
   --priority: int               # Priority: 0=none, 1=urgent, 2=high, 3=medium, 4=low
 ] {
-  let id = if $id == null {
-    let val = (input "Issue ID/Title: ")
-    if ($val | is-empty) { exit-error "Issue ID is required" }
-    $val
-  } else { $id }
+  let id = if $id == null { prompt "Issue ID/Title: " --required } else { $id }
 
-  # Validate mutual exclusivity
   if $description != null and $description_file != null {
     exit-error "Cannot use both --description and --description-file"
   }
 
-  # Handle epic/parent alias
   let parent_val = if $epic != null { $epic } else { $parent }
 
-  # Resolve description from file if provided
   let desc = if $description_file != null {
     read-content-file $description_file
   } else {
@@ -466,19 +351,16 @@ export def "main edit" [
 
   # If no flags, open in editor
   if not $has_flags {
-    # Fetch current issue content
     let data = (linear-query r#'
       query($id: String!) {
         issue(id: $id) { identifier title description }
       }
-    '# { id: $id })
+    '# { id: $uuid })
 
     let issue = $data.issue
     if $issue == null { exit-error $"Issue '($id)' not found" }
 
-    # Format as markdown
     let content = $"# ($issue.title)\n\n($issue.description | default '')"
-
     let edited = (edit-in-editor $content)
     if $edited == null {
       print "No changes made"
@@ -486,7 +368,6 @@ export def "main edit" [
     }
 
     let parsed = (parse-markdown-doc $edited)
-
     let input = { title: $parsed.title, description: $parsed.body }
     let update = (linear-query r#'
       mutation($id: String!, $input: IssueUpdateInput!) {
@@ -506,14 +387,14 @@ export def "main edit" [
   }
 
   # Flag-based update
-  let input = ({} 
-    | merge (if $title != null { { title: $title } } else { {} })
-    | merge (if $desc != null { { description: $desc } } else { {} })
-    | merge (if $parent_val != null { { parentId: (get-issue-uuid $parent_val) } } else { {} })
-    | merge (if $labels != null { { labelIds: (resolve-labels ($labels | split row "," | each { str trim })) } } else { {} })
-    | merge (if $assignee != null { { assigneeId: (resolve-user $assignee).id } } else { {} })
-    | merge (if $priority != null { { priority: $priority } } else { {} })
-  )
+  let input = {
+    title: $title
+    description: $desc
+    parentId: (if $parent_val != null { (get-issue-uuid $parent_val) } else { null })
+    labelIds: (if $labels != null { (resolve-labels ($labels | split row "," | each { str trim })) } else { null })
+    assigneeId: (if $assignee != null { (resolve-user $assignee).id } else { null })
+    priority: $priority
+  } | compact-record
 
   let data = (linear-query r#'
     mutation($id: String!, $input: IssueUpdateInput!) {
@@ -524,5 +405,5 @@ export def "main edit" [
     }
   '# { id: $uuid, input: $input })
 
-  if $data.issueUpdate.success { print $"Updated ($data.issueUpdate.issue.identifier): ($input | columns | str join ', ')" } else { exit-error "Failed to update issue" }
+  if $data.issueUpdate.success { print $"Updated ($data.issueUpdate.issue.identifier): ($input | columns | str join ", ")" } else { exit-error "Failed to update issue" }
 }

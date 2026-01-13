@@ -14,16 +14,6 @@ export def format-date [fmt: string = "%Y-%m-%d"] {
   try { $d | into datetime | format date $fmt } catch { $d }
 }
 
-# Display key-value pair
-export def display-kv [key: string, val: any] {
-  print $"(ansi cyan)($key):(ansi reset) ($val)"
-}
-
-# Display section header
-export def display-section [title: string] {
-  print $"(ansi cyan)($title):(ansi reset)"
-}
-
 export def get-api-key [] {
   let key = ($env | get -o LINEAR_API_KEY | default "")
   if $key == "" {
@@ -36,7 +26,7 @@ export def linear-query [query: string, variables: record = {}] {
   let api_key = (get-api-key)
   let resp = try {
     http post https://api.linear.app/graphql --content-type application/json --headers [Authorization $api_key] --allow-errors { query: $query, variables: $variables }
-  } catch { |e|
+  } catch { |e| 
     let msg = $e.msg? | default "unknown error"
     if ($msg | str contains "Network failure") {
       exit-error "HTTP request failed: Check LINEAR_API_KEY is valid and network is available"
@@ -58,11 +48,6 @@ export def linear-query [query: string, variables: record = {}] {
     exit-error $friendly_msg
   }
   $resp.data
-}
-
-export def truncate [n: int] {
-  let s = $in
-  if ($s | str length) > $n { $"($s | str substring 0..($n - 1))..." } else { $s }
 }
 
 export def map-status [s: string] {
@@ -131,4 +116,17 @@ export def parse-markdown-doc [content: string] {
   let body = ($body_lines | str join "\n" | str trim)
 
   { title: $title, body: $body }
+}
+
+# Remove keys with null values from a record
+export def compact-record [] {
+  let record = $in
+  $record | columns | reduce -f {} {|col, acc| 
+    let val = ($record | get $col)
+    if $val != null {
+      $acc | insert $col $val
+    } else {
+      $acc
+    }
+  }
 }
