@@ -2,7 +2,7 @@
 
 use ../lib/api.nu [exit-error, linear-query, map-status, edit-in-editor, parse-markdown-doc, read-content-file, compact-record, format-date]
 use ../lib/resolvers.nu [get-team, resolve-user, get-issue-uuid, resolve-labels, resolve-cycle]
-use ../lib/ui.nu [prompt, select, render-issue, render-comments, truncate]
+use ../lib/ui.nu [prompt, prompt-select, render-issue, render-comments, truncate, apply-view]
 
 # List issues with filters
 export def "main list" [
@@ -16,6 +16,9 @@ export def "main list" [
   --blocking (-B)          # Only show issues that block others
   --limit (-n): int = 50   # Max issues to fetch
   --json (-j)              # Output as JSON
+  --cols: string           # Columns to show (e.g. ID,Title)
+  --rows: string           # Rows to show (e.g. 1-5,10)
+  --sort: string           # Column to sort by
 ] {
   let filter = {
     state: (if $status != null { { name: { eq: (map-status $status) } } } else { null })
@@ -91,6 +94,7 @@ export def "main list" [
       Assignee: ($i.assignee | default "-")
       Epic: ($i.epic | default "-")
     }}
+    | apply-view --cols $cols --rows $rows --sort $sort
   }
 }
 
@@ -217,7 +221,7 @@ export def "main comment" [
     }
   '# { issueId: $uuid, body: $comment_body })
 
-  if $data.commentCreate.success { print $"Comment added to ($id" } else { exit-error "Failed to add comment" }
+  if $data.commentCreate.success { print $"Comment added to ($id)" } else { exit-error "Failed to add comment" }
 }
 
 # Update issue status
@@ -236,7 +240,7 @@ export def "main status" [
     $state.id
   } else {
     let options = ($states.workflowStates.nodes | get name)
-    let choice = (select "Select Status:" $options)
+    let choice = (prompt-select "Select Status:" $options)
     ($states.workflowStates.nodes | where name == $choice | first).id
   }
 
@@ -288,7 +292,7 @@ export def "main create" [
   
   let type_val = if $interactive and $type == null {
     let types = ["feature", "bug", "refactor", "docs", "chore"]
-    select "Type (optional): " $types
+    prompt-select "Type (optional): " $types
   } else { $type }
 
   let labels = ([]
