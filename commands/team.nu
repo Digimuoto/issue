@@ -1,6 +1,7 @@
 # Team commands
 
-use ../lib/api.nu [exit-error, linear-query, display-kv]
+use ../lib/api.nu [exit-error, linear-query]
+use ../lib/ui.nu [display-kv]
 
 # Team management
 export def "main team" [] {

@@ -1,6 +1,7 @@
 # Cycle/Sprint commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, display-kv, display-section, format-date]
+use ../lib/api.nu [exit-error, linear-query, format-date]
+use ../lib/ui.nu [truncate, display-kv, display-section]
 use ../lib/resolvers.nu [get-team]
 
 # Show current sprint

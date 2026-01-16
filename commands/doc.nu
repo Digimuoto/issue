@@ -1,6 +1,7 @@
 # Document commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, edit-in-editor, parse-markdown-doc, read-content-file, display-kv, display-section, format-date]
+use ../lib/api.nu [exit-error, linear-query, edit-in-editor, parse-markdown-doc, read-content-file, format-date]
+use ../lib/ui.nu [truncate, display-kv, display-section]
 use ../lib/resolvers.nu [get-doc-uuid, resolve-project]
 
 # Document management

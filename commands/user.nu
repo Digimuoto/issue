@@ -1,6 +1,7 @@
 # User commands
 
-use ../lib/api.nu [exit-error, linear-query, display-kv, format-date]
+use ../lib/api.nu [exit-error, linear-query, format-date]
+use ../lib/ui.nu [display-kv]
 
 # User management
 export def "main user" [] {

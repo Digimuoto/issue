@@ -1,6 +1,7 @@
 # Search commands
 
-use ../lib/api.nu [linear-query, truncate]
+use ../lib/api.nu [linear-query]
+use ../lib/ui.nu [truncate]
 
 # Full-text search across issues
 export def "main search" [

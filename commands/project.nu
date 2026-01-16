@@ -1,6 +1,7 @@
 # Project commands
 
-use ../lib/api.nu [exit-error, linear-query, truncate, display-kv, display-section]
+use ../lib/api.nu [exit-error, linear-query]
+use ../lib/ui.nu [truncate, display-kv, display-section]
 use ../lib/resolvers.nu [resolve-project]
 
 # Project management
